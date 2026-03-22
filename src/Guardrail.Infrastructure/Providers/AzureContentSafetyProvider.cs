@@ -166,7 +166,11 @@ public sealed class AzureContentSafetyProvider : IContentSafetyProvider
         string severity,
         params string[] markers)
     {
-        if (markers.Any(marker => text.Contains(marker, StringComparison.OrdinalIgnoreCase)))
+        // Use word-boundary matching to avoid false positives like "skills" containing "kill"
+        if (markers.Any(marker =>
+            System.Text.RegularExpressions.Regex.IsMatch(
+                text, $@"\b{System.Text.RegularExpressions.Regex.Escape(marker)}\b",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase)))
         {
             flags.Add(new ContentSafetyFlag
             {

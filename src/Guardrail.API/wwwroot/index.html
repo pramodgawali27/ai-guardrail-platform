@@ -362,7 +362,7 @@
 
   function renderGuardrailStep(num, title, icon, g) {
     if (!g) return '';
-    const score = Math.round((g.normalizedScore ?? 0) * 100);
+    const score = Math.min(100, Math.round(g.normalizedScore ?? 0));
     const signals = g.detectedSignals ?? [];
     const policies = g.appliedPolicies ?? [];
 
