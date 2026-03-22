@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Policy Admin — AI Guardrail Platform</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+
+    header {
+      background: linear-gradient(135deg, #1a1f2e 0%, #161b27 100%);
+      border-bottom: 1px solid #2d3748;
+      padding: 18px 40px; display: flex; align-items: center; gap: 14px;
+    }
+    header h1 { font-size: 20px; font-weight: 700; color: #fff; }
+    header p  { font-size: 12px; color: #718096; margin-top: 2px; }
+    .nav-links { margin-left: auto; display: flex; gap: 12px; }
+    .nav-links a {
+      font-size: 12px; color: #718096; text-decoration: none;
+      padding: 5px 12px; border: 1px solid #2d3748; border-radius: 6px;
+      transition: all 0.15s;
+    }
+    .nav-links a:hover { color: #e2e8f0; border-color: #4a5568; }
+    .nav-links a.active { color: #63b3ed; border-color: #2b6cb0; background: #1a365d22; }
+
+    .container { max-width: 1300px; margin: 0 auto; padding: 28px 24px; }
+
+    .layout { display: grid; grid-template-columns: 300px 1fr; gap: 20px; align-items: start; }
+    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+    .card { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 10px; }
+    .card-header {
+      padding: 14px 18px; border-bottom: 1px solid #2d3748;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .card-header h2 { font-size: 13px; font-weight: 600; color: #e2e8f0; }
+    .card-body { padding: 16px 18px; }
+
+    /* Policy list */
+    .policy-item {
+      padding: 10px 12px; border-radius: 8px; cursor: pointer;
+      border: 1px solid transparent; margin-bottom: 6px;
+      transition: all 0.15s;
+    }
+    .policy-item:hover { background: #2d3748; }
+    .policy-item.selected { background: #1a365d; border-color: #2b6cb0; }
+    .policy-name { font-size: 13px; font-weight: 500; color: #e2e8f0; }
+    .policy-meta { font-size: 11px; color: #4a5568; margin-top: 3px; }
+    .policy-scope {
+      display: inline-block; font-size: 10px; font-weight: 600;
+      padding: 1px 6px; border-radius: 8px; margin-right: 4px;
+    }
+    .scope-Global     { background: #1c4532; color: #68d391; }
+    .scope-Tenant     { background: #1a365d; color: #63b3ed; }
+    .scope-Application { background: #44337a; color: #d6bcfa; }
+    .scope-Domain     { background: #7b341e; color: #fbd38d; }
+
+    /* Editor */
+    label { display: block; font-size: 11px; color: #a0aec0; margin-bottom: 4px; margin-top: 12px; }
+    label:first-of-type { margin-top: 0; }
+    input[type=text], input[type=datetime-local], select, textarea {
+      width: 100%; background: #0f1117; border: 1px solid #2d3748;
+      border-radius: 6px; color: #e2e8f0; font-size: 13px;
+      padding: 8px 10px; outline: none; font-family: inherit;
+      transition: border-color 0.2s;
+    }
+    input:focus, select:focus, textarea:focus { border-color: #4299e1; }
+    textarea.json-editor {
+      font-family: 'SFMono-Regular', 'Consolas', monospace;
+      font-size: 12px; min-height: 320px; resize: vertical; line-height: 1.6;
+    }
+    textarea.json-editor.error { border-color: #fc8181; }
+
+    .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    /* Forbidden phrases editor */
+    .phrase-list { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+    .phrase-row {
+      display: flex; align-items: center; gap: 6px;
+    }
+    .phrase-row input { flex: 1; }
+    .phrase-row button {
+      flex-shrink: 0; width: 28px; height: 28px;
+      background: #742a2a; border: 1px solid #9b2c2c; border-radius: 5px;
+      color: #fc8181; cursor: pointer; font-size: 14px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .phrase-row button:hover { background: #9b2c2c; }
+    .add-phrase-btn {
+      margin-top: 6px; padding: 6px 12px;
+      background: #1a365d; border: 1px solid #2b6cb0; border-radius: 6px;
+      color: #63b3ed; font-size: 12px; cursor: pointer;
+    }
+    .add-phrase-btn:hover { background: #2a4a7f; }
+
+    /* Buttons */
+    .btn-row { display: flex; gap: 8px; margin-top: 18px; }
+    .btn {
+      padding: 9px 18px; border-radius: 7px; font-size: 13px;
+      font-weight: 600; cursor: pointer; border: none; transition: all 0.15s;
+    }
+    .btn-primary { background: #3182ce; color: #fff; }
+    .btn-primary:hover { background: #2b6cb0; }
+    .btn-primary:disabled { background: #2d3748; color: #718096; cursor: not-allowed; }
+    .btn-danger { background: #742a2a; color: #fc8181; border: 1px solid #9b2c2c; }
+    .btn-danger:hover { background: #9b2c2c; }
+    .btn-secondary { background: #2d3748; color: #a0aec0; border: 1px solid #4a5568; }
+    .btn-secondary:hover { background: #4a5568; color: #e2e8f0; }
+    .btn-success { background: #276749; color: #68d391; border: 1px solid #38a169; }
+    .btn-success:hover { background: #2f855a; }
+
+    /* Toast */
+    #toast {
+      position: fixed; bottom: 24px; right: 24px;
+      padding: 12px 18px; border-radius: 8px; font-size: 13px;
+      display: none; z-index: 1000; max-width: 360px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    }
+    #toast.success { background: #1c4532; border: 1px solid #276749; color: #68d391; }
+    #toast.error   { background: #742a2a; border: 1px solid #9b2c2c; color: #fc8181; }
+    #toast.info    { background: #1a365d; border: 1px solid #2b6cb0; color: #63b3ed; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 0; border-bottom: 1px solid #2d3748; margin-bottom: 16px; }
+    .tab {
+      padding: 8px 16px; font-size: 12px; font-weight: 500; cursor: pointer;
+      color: #718096; border-bottom: 2px solid transparent; margin-bottom: -1px;
+      transition: all 0.15s;
+    }
+    .tab.active { color: #63b3ed; border-bottom-color: #3182ce; }
+    .tab:hover { color: #e2e8f0; }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* Empty state */
+    .empty { text-align: center; padding: 48px 20px; color: #4a5568; }
+    .empty .icon { font-size: 36px; margin-bottom: 12px; }
+    .empty p { font-size: 13px; }
+
+    /* New policy form */
+    #newPolicyPanel {
+      display: none;
+      background: #161b27; border: 1px solid #2d3748;
+      border-radius: 10px; padding: 20px; margin-bottom: 16px;
+    }
+    #newPolicyPanel h3 { font-size: 13px; font-weight: 600; margin-bottom: 14px; color: #e2e8f0; }
+
+    .badge-active   { display: inline-block; padding: 2px 7px; border-radius: 8px; font-size: 10px; font-weight: 600; background: #1c4532; color: #68d391; border: 1px solid #276749; }
+    .badge-inactive { display: inline-block; padding: 2px 7px; border-radius: 8px; font-size: 10px; font-weight: 600; background: #2d3748; color: #718096; border: 1px solid #4a5568; }
+
+    .section-title { font-size: 11px; font-weight: 600; color: #718096; text-transform: uppercase; letter-spacing: 0.05em; margin: 16px 0 8px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div style="font-size:28px">⚙️</div>
+  <div>
+    <h1>Policy Admin</h1>
+    <p>Manage guardrail policies and forbidden phrases at runtime</p>
+  </div>
+  <div class="nav-links">
+    <a href="/">Demo Chat</a>
+    <a href="/admin.html" class="active">Policy Admin</a>
+    <a href="/swagger" target="_blank">API Docs</a>
+  </div>
+</header>
+
+<div class="container">
+  <div class="layout">
+
+    <!-- Left: policy list -->
+    <div>
+      <div class="card">
+        <div class="card-header">
+          <h2>Policies</h2>
+          <button class="btn btn-primary" style="padding:5px 10px;font-size:11px" onclick="toggleNewPolicy()">+ New</button>
+        </div>
+
+        <div id="newPolicyPanel">
+          <h3>Create Policy</h3>
+          <label>Name</label>
+          <input type="text" id="newName" placeholder="My Policy" />
+          <label>Scope</label>
+          <select id="newScope">
+            <option value="Global">Global</option>
+            <option value="Tenant">Tenant</option>
+            <option value="Application" selected>Application</option>
+          </select>
+          <div class="row-2">
+            <div>
+              <label>Tenant ID (optional)</label>
+              <input type="text" id="newTenantId" placeholder="aaaaaaaa-..." />
+            </div>
+            <div>
+              <label>Application ID (optional)</label>
+              <input type="text" id="newAppId" placeholder="bbbbbbbb-..." />
+            </div>
+          </div>
+          <label>Description</label>
+          <input type="text" id="newDesc" placeholder="Short description" />
+          <div class="btn-row">
+            <button class="btn btn-primary" onclick="createPolicy()">Create</button>
+            <button class="btn btn-secondary" onclick="toggleNewPolicy()">Cancel</button>
+          </div>
+        </div>
+
+        <div class="card-body" id="policyList">
+          <div class="empty"><div class="icon">📋</div><p>Loading policies…</p></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: editor -->
+    <div class="card" id="editorCard">
+      <div class="card-header">
+        <h2 id="editorTitle">Select a policy to edit</h2>
+        <div style="display:flex;gap:6px" id="editorActions" style="display:none"></div>
+      </div>
+      <div class="card-body">
+        <div class="empty" id="editorEmpty">
+          <div class="icon">👈</div>
+          <p>Select a policy from the list<br>to view and edit it</p>
+        </div>
+        <div id="editorForm" style="display:none">
+          <div class="tabs">
+            <div class="tab active" onclick="switchTab('phrases')">Forbidden Phrases</div>
+            <div class="tab" onclick="switchTab('json')">Full Policy JSON</div>
+            <div class="tab" onclick="switchTab('info')">Profile Info</div>
+          </div>
+
+          <!-- Tab: forbidden phrases -->
+          <div class="tab-panel active" id="tab-phrases">
+            <p style="font-size:12px;color:#718096;margin-bottom:12px">
+              Any prompt containing these phrases (case-insensitive, word-boundary matched) will be flagged.
+              Changes take effect immediately after saving.
+            </p>
+            <div class="phrase-list" id="phraseList"></div>
+            <button class="add-phrase-btn" onclick="addPhrase()">+ Add phrase</button>
+          </div>
+
+          <!-- Tab: full json -->
+          <div class="tab-panel" id="tab-json">
+            <p style="font-size:12px;color:#718096;margin-bottom:10px">
+              Edit the full policy JSON. This includes tool allowlists, risk thresholds, constraints, and all other settings.
+            </p>
+            <div id="jsonError" style="display:none;margin-bottom:8px;padding:8px 10px;background:#742a2a;border:1px solid #9b2c2c;border-radius:6px;font-size:12px;color:#fc8181"></div>
+            <textarea class="json-editor" id="jsonEditor" spellcheck="false" oninput="validateJson()"></textarea>
+          </div>
+
+          <!-- Tab: info -->
+          <div class="tab-panel" id="tab-info">
+            <div class="row-2">
+              <div>
+                <label>Name</label>
+                <input type="text" id="infoName" />
+              </div>
+              <div>
+                <label>Scope</label>
+                <input type="text" id="infoScope" readonly style="color:#718096" />
+              </div>
+            </div>
+            <label>Description</label>
+            <input type="text" id="infoDesc" />
+            <div class="row-2">
+              <div>
+                <label>Effective From</label>
+                <input type="datetime-local" id="infoFrom" />
+              </div>
+              <div>
+                <label>Effective To (leave empty = no expiry)</label>
+                <input type="datetime-local" id="infoTo" />
+              </div>
+            </div>
+            <div class="row-2" style="margin-top:12px">
+              <div>
+                <div class="section-title">Tenant ID</div>
+                <code style="font-size:11px;color:#718096" id="infoTenantId">—</code>
+              </div>
+              <div>
+                <div class="section-title">Application ID</div>
+                <code style="font-size:11px;color:#718096" id="infoAppId">—</code>
+              </div>
+            </div>
+            <div style="margin-top:12px">
+              <div class="section-title">Profile ID</div>
+              <code style="font-size:11px;color:#718096" id="infoProfileId">—</code>
+            </div>
+          </div>
+
+          <div class="btn-row">
+            <button class="btn btn-primary" id="saveBtn" onclick="savePolicy()">Save Changes</button>
+            <button class="btn btn-danger" onclick="deactivatePolicy()">Deactivate</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  const TENANT_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0001';
+  let policies = [];
+  let selectedPolicy = null;
+  let selectedPolicyJson = {};
+  let activeTab = 'phrases';
+
+  // ── Load policies ────────────────────────────────────────────────────────────
+  async function loadPolicies() {
+    try {
+      const res = await fetch(`/api/policies/${TENANT_ID}/00000000-0000-0000-0000-000000000000`, {
+        headers: { 'Authorization': 'Bearer demo' }
+      });
+
+      // The single-policy endpoint won't work for listing — use the list endpoint
+      const listRes = await fetch(`/api/policies?tenantId=${TENANT_ID}`, {
+        headers: { 'Authorization': 'Bearer demo' }
+      });
+
+      if (listRes.ok) {
+        policies = await listRes.json();
+      } else {
+        // Fallback: load each known policy by its ID via the effective policy endpoints
+        policies = await loadKnownPolicies();
+      }
+      renderPolicyList();
+    } catch (e) {
+      // Fallback to known seeded policies
+      policies = await loadKnownPolicies();
+      renderPolicyList();
+    }
+  }
+
+  async function loadKnownPolicies() {
+    const appIds = [
+      { id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0001', name: 'Plain Language Summary' },
+      { id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0002', name: 'Enterprise Copilot' },
+      { id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0003', name: 'Regulated Healthcare' },
+      { id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0004', name: 'Internal Developer Assistant' },
+    ];
+    const results = [];
+    for (const app of appIds) {
+      try {
+        const res = await fetch(`/api/policies/${TENANT_ID}/${app.id}`, {
+          headers: { 'Authorization': 'Bearer demo' }
+        });
+        if (res.ok) {
+          const p = await res.json();
+          results.push({ ...p, _appId: app.id, _appName: app.name });
+        }
+      } catch {}
+    }
+    return results;
+  }
+
+  function renderPolicyList() {
+    const el = document.getElementById('policyList');
+    if (!policies || policies.length === 0) {
+      el.innerHTML = '<div class="empty"><div class="icon">📋</div><p>No policies found</p></div>';
+      return;
+    }
+    el.innerHTML = policies.map((p, i) => {
+      const scope = p.scope ?? p.policyScope ?? 'Application';
+      const isActive = p.isActive !== false;
+      const name = p.name ?? p.policyName ?? p._appName ?? 'Unnamed';
+      const selected = selectedPolicy && (selectedPolicy.id === p.id || selectedPolicy._appId === p._appId);
+      return `
+        <div class="policy-item ${selected ? 'selected' : ''}" onclick="selectPolicy(${i})">
+          <div style="display:flex;align-items:center;gap:6px">
+            <span class="policy-name">${escHtml(name)}</span>
+            <span class="${isActive ? 'badge-active' : 'badge-inactive'}">${isActive ? 'Active' : 'Inactive'}</span>
+          </div>
+          <div class="policy-meta">
+            <span class="policy-scope scope-${scope}">${scope}</span>
+            ${p.version ? `v${p.version}` : ''}
+            ${p.domain ? `· ${p.domain}` : ''}
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // ── Select policy ────────────────────────────────────────────────────────────
+  async function selectPolicy(index) {
+    selectedPolicy = policies[index];
+    renderPolicyList();
+
+    document.getElementById('editorEmpty').style.display = 'none';
+    document.getElementById('editorForm').style.display = 'block';
+
+    // Parse policy JSON
+    let policyJson = selectedPolicy.policyJson ?? selectedPolicy.policy ?? selectedPolicy.constraints ?? {};
+    if (typeof policyJson === 'string') {
+      try { policyJson = JSON.parse(policyJson); } catch { policyJson = {}; }
+    }
+    selectedPolicyJson = policyJson;
+
+    const name = selectedPolicy.name ?? selectedPolicy.policyName ?? selectedPolicy._appName ?? 'Policy';
+    document.getElementById('editorTitle').textContent = name;
+
+    // Info tab
+    document.getElementById('infoName').value = name;
+    document.getElementById('infoScope').value = selectedPolicy.scope ?? selectedPolicy.policyScope ?? 'Application';
+    document.getElementById('infoDesc').value = selectedPolicy.description ?? '';
+    document.getElementById('infoFrom').value = toDatetimeLocal(selectedPolicy.effectiveFrom);
+    document.getElementById('infoTo').value   = toDatetimeLocal(selectedPolicy.effectiveTo);
+    document.getElementById('infoTenantId').textContent  = selectedPolicy.tenantId ?? selectedPolicy._appId ?? '—';
+    document.getElementById('infoAppId').textContent     = selectedPolicy.applicationId ?? selectedPolicy._appId ?? '—';
+    document.getElementById('infoProfileId').textContent = selectedPolicy.id ?? selectedPolicy.profileId ?? '—';
+
+    // JSON tab
+    document.getElementById('jsonEditor').value = JSON.stringify(selectedPolicyJson, null, 2);
+    document.getElementById('jsonError').style.display = 'none';
+
+    // Phrases tab
+    renderPhrases(selectedPolicyJson.forbiddenPhrases ?? []);
+
+    switchTab(activeTab);
+  }
+
+  // ── Forbidden phrases ────────────────────────────────────────────────────────
+  function renderPhrases(phrases) {
+    const el = document.getElementById('phraseList');
+    if (!phrases || phrases.length === 0) {
+      el.innerHTML = '<p style="font-size:12px;color:#4a5568">No forbidden phrases configured.</p>';
+      return;
+    }
+    el.innerHTML = phrases.map((p, i) => `
+      <div class="phrase-row">
+        <input type="text" value="${escHtml(p)}" onchange="updatePhrase(${i}, this.value)" />
+        <button onclick="removePhrase(${i})" title="Remove">✕</button>
+      </div>
+    `).join('');
+  }
+
+  function getPhrases() {
+    return Array.from(document.querySelectorAll('#phraseList .phrase-row input'))
+      .map(i => i.value.trim())
+      .filter(v => v.length > 0);
+  }
+
+  function addPhrase() {
+    const phrases = getPhrases();
+    phrases.push('');
+    renderPhrases(phrases);
+    const inputs = document.querySelectorAll('#phraseList .phrase-row input');
+    inputs[inputs.length - 1]?.focus();
+  }
+
+  function removePhrase(index) {
+    const phrases = getPhrases();
+    phrases.splice(index, 1);
+    renderPhrases(phrases);
+  }
+
+  function updatePhrase(index, value) {
+    // handled live via getPhrases()
+  }
+
+  // ── JSON validation ──────────────────────────────────────────────────────────
+  function validateJson() {
+    const el = document.getElementById('jsonEditor');
+    const errEl = document.getElementById('jsonError');
+    try {
+      JSON.parse(el.value);
+      el.classList.remove('error');
+      errEl.style.display = 'none';
+      return true;
+    } catch (e) {
+      el.classList.add('error');
+      errEl.style.display = 'block';
+      errEl.textContent = 'Invalid JSON: ' + e.message;
+      return false;
+    }
+  }
+
+  // ── Save ─────────────────────────────────────────────────────────────────────
+  async function savePolicy() {
+    if (!selectedPolicy) return;
+
+    const btn = document.getElementById('saveBtn');
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+
+    try {
+      // Build updated policyJson from the active tab
+      let updatedJson;
+      if (activeTab === 'json') {
+        if (!validateJson()) { btn.disabled = false; btn.textContent = 'Save Changes'; return; }
+        updatedJson = JSON.parse(document.getElementById('jsonEditor').value);
+      } else {
+        // Merge phrases back into existing json
+        updatedJson = { ...selectedPolicyJson, forbiddenPhrases: getPhrases() };
+      }
+
+      // Merge info tab changes
+      const name = document.getElementById('infoName').value.trim() || selectedPolicy.name;
+      const desc = document.getElementById('infoDesc').value.trim();
+      const from = document.getElementById('infoFrom').value;
+      const to   = document.getElementById('infoTo').value;
+
+      const body = {
+        name,
+        description: desc,
+        policyJson: JSON.stringify(updatedJson),
+        effectiveFrom: from ? new Date(from).toISOString() : (selectedPolicy.effectiveFrom ?? new Date().toISOString()),
+        effectiveTo:   to   ? new Date(to).toISOString()   : null,
+        tenantId:      selectedPolicy.tenantId ?? null,
+        applicationId: selectedPolicy.applicationId ?? selectedPolicy._appId ?? null,
+        domain:        selectedPolicy.domain ?? null,
+        parentProfileId: selectedPolicy.parentProfileId ?? null
+      };
+
+      const profileId = selectedPolicy.id ?? selectedPolicy.profileId;
+      if (!profileId) { toast('Cannot save: policy ID unknown. This policy may need to be recreated via API.', 'error'); return; }
+
+      const res = await fetch(`/api/policies/${profileId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer demo' },
+        body: JSON.stringify(body)
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        toast(`Saved. Version: ${data.version ?? '—'}`, 'success');
+        selectedPolicyJson = updatedJson;
+        await loadPolicies();
+        // Re-select same policy
+        const idx = policies.findIndex(p => (p.id ?? p.profileId) === profileId);
+        if (idx >= 0) selectPolicy(idx);
+      } else {
+        const err = await res.text();
+        toast('Save failed: ' + err, 'error');
+      }
+    } catch (e) {
+      toast('Error: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Save Changes';
+    }
+  }
+
+  // ── Deactivate ───────────────────────────────────────────────────────────────
+  async function deactivatePolicy() {
+    if (!selectedPolicy) return;
+    const profileId = selectedPolicy.id ?? selectedPolicy.profileId;
+    if (!profileId) { toast('Cannot deactivate: policy ID unknown.', 'error'); return; }
+    if (!confirm(`Deactivate "${selectedPolicy.name}"? This will stop it from being applied to evaluations.`)) return;
+
+    const res = await fetch(`/api/policies/${profileId}`, {
+      method: 'DELETE', headers: { 'Authorization': 'Bearer demo' }
+    });
+    if (res.ok || res.status === 204) {
+      toast('Policy deactivated.', 'info');
+      selectedPolicy = null;
+      document.getElementById('editorEmpty').style.display = 'block';
+      document.getElementById('editorForm').style.display = 'none';
+      document.getElementById('editorTitle').textContent = 'Select a policy to edit';
+      await loadPolicies();
+    } else {
+      toast('Deactivate failed: ' + await res.text(), 'error');
+    }
+  }
+
+  // ── Create policy ────────────────────────────────────────────────────────────
+  function toggleNewPolicy() {
+    const el = document.getElementById('newPolicyPanel');
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  }
+
+  async function createPolicy() {
+    const name = document.getElementById('newName').value.trim();
+    if (!name) { toast('Name is required.', 'error'); return; }
+
+    const scope = document.getElementById('newScope').value;
+    const tenantId = document.getElementById('newTenantId').value.trim() || TENANT_ID;
+    const appId = document.getElementById('newAppId').value.trim() || null;
+    const desc = document.getElementById('newDesc').value.trim();
+
+    const defaultJson = JSON.stringify({
+      forbiddenPhrases: [],
+      allowToolUse: false,
+      allowedTools: [],
+      deniedTools: []
+    });
+
+    const body = {
+      name, description: desc,
+      policyJson: defaultJson,
+      effectiveFrom: new Date().toISOString(),
+      tenantId: tenantId || null,
+      applicationId: appId || null,
+      domain: null, parentProfileId: null
+    };
+
+    const res = await fetch('/api/policies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer demo' },
+      body: JSON.stringify(body)
+    });
+
+    if (res.ok || res.status === 201) {
+      const data = await res.json();
+      toast(`Created policy "${name}" (ID: ${data.id})`, 'success');
+      toggleNewPolicy();
+      document.getElementById('newName').value = '';
+      document.getElementById('newDesc').value = '';
+      document.getElementById('newTenantId').value = '';
+      document.getElementById('newAppId').value = '';
+      await loadPolicies();
+    } else {
+      toast('Create failed: ' + await res.text(), 'error');
+    }
+  }
+
+  // ── Tabs ─────────────────────────────────────────────────────────────────────
+  function switchTab(name) {
+    activeTab = name;
+    document.querySelectorAll('.tab').forEach((t, i) => {
+      t.classList.toggle('active', ['phrases','json','info'][i] === name);
+    });
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('tab-' + name)?.classList.add('active');
+  }
+
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+  function toast(msg, type = 'info') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = type;
+    el.style.display = 'block';
+    clearTimeout(window._toastTimer);
+    window._toastTimer = setTimeout(() => { el.style.display = 'none'; }, 4000);
+  }
+
+  function escHtml(s) {
+    return (s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function toDatetimeLocal(iso) {
+    if (!iso) return '';
+    try { return new Date(iso).toISOString().slice(0, 16); } catch { return ''; }
+  }
+
+  // ── Init ─────────────────────────────────────────────────────────────────────
+  loadPolicies();
+</script>
+</body>
+</html>
