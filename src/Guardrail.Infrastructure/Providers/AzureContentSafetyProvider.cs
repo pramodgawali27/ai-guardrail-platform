@@ -102,6 +102,19 @@ public sealed class AzureContentSafetyProvider : IContentSafetyProvider
         AddIfContains(text, flags, "SelfHarm", 0.90m, "High", "suicide", "self-harm", "hurt myself");
         AddIfContains(text, flags, "Sexual", 0.70m, "Medium", "explicit", "porn", "sexual content");
         AddIfContains(text, flags, "Hate", 0.70m, "Medium", "hate group", "racially inferior", "targeted hate");
+
+        // Destructive operations
+        AddIfContains(text, flags, "DestructiveAction", 0.95m, "Critical",
+            "drop table", "drop database", "drop all tables",
+            "truncate table", "delete all records", "wipe the database",
+            "destroy the database", "rm -rf", "format c:", "delete all data");
+
+        // Data exfiltration
+        AddIfContains(text, flags, "DataExfiltration", 0.90m, "Critical",
+            "email the backup", "send to external", "upload to external",
+            "exfiltrate", "send the data to", "export to external",
+            "email to external", "ftp to external", "copy to external server");
+
         flags.AddRange(DetectPrivacyFlags(text));
 
         var overallScore = flags.Count == 0 ? 0m : flags.Max(x => x.Score);

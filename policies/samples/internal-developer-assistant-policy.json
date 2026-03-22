@@ -30,7 +30,18 @@
     "maxDocuments": 20,
     "forbiddenPhrases": [
       "print all secrets",
-      "dump environment variables"
+      "dump environment variables",
+      "drop all tables",
+      "drop table",
+      "drop database",
+      "truncate table",
+      "delete all records",
+      "wipe the database",
+      "email the backup",
+      "send to external",
+      "upload to external",
+      "exfiltrate",
+      "email to external-server"
     ]
   }
 }
