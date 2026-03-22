@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: guardrail-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: guardrail-api
+  template:
+    metadata:
+      labels:
+        app: guardrail-api
+    spec:
+      containers:
+        - name: guardrail-api
+          image: your-registry.azurecr.io/guardrail-api:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: ASPNETCORE_ENVIRONMENT
+              value: Production
+            - name: ConnectionStrings__PostgreSql
+              valueFrom:
+                secretKeyRef:
+                  name: guardrail-secrets
+                  key: postgres-connection-string
+            - name: ConnectionStrings__Redis
+              valueFrom:
+                secretKeyRef:
+                  name: guardrail-secrets
+                  key: redis-connection-string
+            - name: Auth__Authority
+              valueFrom:
+                configMapKeyRef:
+                  name: guardrail-config
+                  key: auth-authority
+            - name: Auth__Audience
+              valueFrom:
+                configMapKeyRef:
+                  name: guardrail-config
+                  key: auth-audience
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: guardrail-api
+spec:
+  selector:
+    app: guardrail-api
+  ports:
+    - port: 80
+      targetPort: 8080

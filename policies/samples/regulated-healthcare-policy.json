@@ -1,0 +1,41 @@
+{
+  "name": "Regulated Healthcare Assistant Guardrails",
+  "description": "Strict HIPAA-conscious policy with PHI redaction and evidence requirements.",
+  "scope": "Application",
+  "tenantId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0001",
+  "applicationId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0003",
+  "domain": "healthcare",
+  "effectiveFrom": "2026-01-01T00:00:00Z",
+  "policy": {
+    "contentRiskThreshold": 0.6,
+    "privacyRiskThreshold": 0.45,
+    "injectionRiskThreshold": 0.45,
+    "escalationThreshold": 0.7,
+    "blockThreshold": 0.85,
+    "piiRedactionEnabled": true,
+    "phiRedactionEnabled": true,
+    "requireCitations": true,
+    "requireEvidenceForRegulatedResponses": true,
+    "mandatoryDisclaimer": "This AI output is not medical advice. A licensed clinician must review it.",
+    "allowToolUse": true,
+    "allowedTools": [
+      "search-documents",
+      "classify-content"
+    ],
+    "approvalRequiredTools": [
+      "publish-summary"
+    ],
+    "allowedSourceTypes": [
+      "ehr-curated",
+      "medical-knowledge-base"
+    ],
+    "minimumSourceTrustLevel": "Verified",
+    "maxDocuments": 4,
+    "minimumOutputQualityScore": 0.85,
+    "forbiddenPhrases": [
+      "guaranteed cure",
+      "replace your physician",
+      "ignore clinical review"
+    ]
+  }
+}

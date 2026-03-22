@@ -1,0 +1,34 @@
+{
+  "name": "Enterprise Copilot Guardrails",
+  "description": "Balanced enterprise copilot policy with controlled tool usage and internal context restrictions.",
+  "scope": "Application",
+  "tenantId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0001",
+  "applicationId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0002",
+  "domain": "enterprise-productivity",
+  "effectiveFrom": "2026-01-01T00:00:00Z",
+  "policy": {
+    "allowToolUse": true,
+    "allowedTools": [
+      "search-documents",
+      "summarize-text",
+      "classify-content",
+      "draft-email"
+    ],
+    "approvalRequiredTools": [
+      "send-email",
+      "export-files"
+    ],
+    "allowedSourceTypes": [
+      "sharepoint",
+      "confluence",
+      "knowledge-base",
+      "database"
+    ],
+    "minimumSourceTrustLevel": "Internal",
+    "maxDocuments": 12,
+    "forbiddenPhrases": [
+      "reveal confidential roadmap",
+      "dump private customer data"
+    ]
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "name": "Plain Language Summary Guardrails",
+  "description": "Moderate-risk policy for user-facing summary generation with publishing controls.",
+  "scope": "Application",
+  "tenantId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0001",
+  "applicationId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0001",
+  "domain": "general",
+  "effectiveFrom": "2026-01-01T00:00:00Z",
+  "policy": {
+    "requireCitations": true,
+    "mandatoryDisclaimer": "AI-generated summary. Verify before external publication.",
+    "allowToolUse": true,
+    "allowedTools": [
+      "search-documents",
+      "summarize-text",
+      "classify-content"
+    ],
+    "approvalRequiredTools": [
+      "publish-summary"
+    ],
+    "allowedSourceTypes": [
+      "sharepoint",
+      "knowledge-base"
+    ],
+    "minimumSourceTrustLevel": "Internal",
+    "maxDocuments": 6,
+    "minimumOutputQualityScore": 0.75,
+    "rules": [
+      {
+        "ruleKey": "summary-requires-citations",
+        "ruleName": "Summary requires citations",
+        "severity": "High",
+        "category": "UnverifiedClaim",
+        "priority": 20,
+        "actions": {
+          "decision": "AllowWithConstraints"
+        }
+      }
+    ]
+  }
+}

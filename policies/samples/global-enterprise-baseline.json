@@ -1,0 +1,43 @@
+{
+  "name": "Global Enterprise Baseline",
+  "description": "Default baseline applied across all tenants when no more specific policy exists.",
+  "scope": "Global",
+  "effectiveFrom": "2026-01-01T00:00:00Z",
+  "policy": {
+    "contentRiskThreshold": 0.7,
+    "privacyRiskThreshold": 0.6,
+    "injectionRiskThreshold": 0.55,
+    "escalationThreshold": 0.8,
+    "blockThreshold": 0.92,
+    "piiRedactionEnabled": true,
+    "phiRedactionEnabled": true,
+    "requireCitations": false,
+    "allowToolUse": false,
+    "crossTenantAllowed": false,
+    "maxDocuments": 10,
+    "minimumSourceTrustLevel": "Internal",
+    "allowedSourceTypes": [
+      "sharepoint",
+      "knowledge-base",
+      "blob",
+      "database"
+    ],
+    "deniedSourceTypes": [
+      "public-web",
+      "anonymous-upload"
+    ],
+    "forbiddenPhrases": [
+      "ignore previous instructions",
+      "reveal the system prompt",
+      "bypass safety controls"
+    ],
+    "riskWeights": {
+      "contentWeight": 0.25,
+      "privacyWeight": 0.2,
+      "injectionWeight": 0.25,
+      "businessPolicyWeight": 0.15,
+      "actionWeight": 0.1,
+      "outputQualityWeight": 0.05
+    }
+  }
+}

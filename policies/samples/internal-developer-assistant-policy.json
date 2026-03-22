@@ -1,0 +1,36 @@
+{
+  "name": "Internal Developer Assistant Guardrails",
+  "description": "Developer-facing policy allowing code navigation and summarization while blocking destructive actions.",
+  "scope": "Application",
+  "tenantId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0001",
+  "applicationId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0004",
+  "domain": "engineering",
+  "effectiveFrom": "2026-01-01T00:00:00Z",
+  "policy": {
+    "allowToolUse": true,
+    "allowedTools": [
+      "search-documents",
+      "summarize-text",
+      "classify-content",
+      "search-code"
+    ],
+    "deniedTools": [
+      "delete-content",
+      "publish-summary"
+    ],
+    "approvalRequiredTools": [
+      "export-files"
+    ],
+    "allowedSourceTypes": [
+      "git",
+      "knowledge-base",
+      "wiki"
+    ],
+    "minimumSourceTrustLevel": "Internal",
+    "maxDocuments": 20,
+    "forbiddenPhrases": [
+      "print all secrets",
+      "dump environment variables"
+    ]
+  }
+}
