@@ -10,7 +10,7 @@ namespace Guardrail.Infrastructure.Providers;
 public class HuggingFaceOptions
 {
     public string Token { get; set; } = string.Empty;
-    public string ModelId { get; set; } = "mistralai/Mistral-7B-Instruct-v0.3";
+    public string ModelId { get; set; } = "HuggingFaceH4/zephyr-7b-beta";
     public int MaxTokens { get; set; } = 512;
     public double Temperature { get; set; } = 0.7;
 }
@@ -60,8 +60,8 @@ public class HuggingFaceInferenceClient
             temperature = _options.Temperature
         };
 
-        // HF serverless inference endpoint (OpenAI-compatible, model specified in body)
-        var url = "https://api-inference.huggingface.co/v1/chat/completions";
+        // HF new router endpoint (replaces deprecated api-inference.huggingface.co)
+        var url = $"https://router.huggingface.co/hf-inference/models/{_options.ModelId}/v1/chat/completions";
 
         var request = new HttpRequestMessage(HttpMethod.Post, url)
         {
@@ -76,8 +76,8 @@ public class HuggingFaceInferenceClient
 
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("HF Inference API returned {Status}: {Body}", response.StatusCode, body);
-                return HuggingFaceChatResponse.Error($"Model returned {(int)response.StatusCode}. It may be loading — try again in 20 seconds.");
+                _logger.LogWarning("HF Inference API returned {Status} for model {Model}: {Body}", response.StatusCode, _options.ModelId, body);
+                return HuggingFaceChatResponse.Error($"Model returned {(int)response.StatusCode}: {body}");
             }
 
             using var doc = JsonDocument.Parse(body);
