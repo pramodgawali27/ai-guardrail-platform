@@ -10,7 +10,7 @@ namespace Guardrail.Infrastructure.Providers;
 public class HuggingFaceOptions
 {
     public string Token { get; set; } = string.Empty;
-    public string ModelId { get; set; } = "microsoft/Phi-3-mini-4k-instruct";
+    public string ModelId { get; set; } = "mistralai/Mistral-7B-Instruct-v0.3";
     public int MaxTokens { get; set; } = 512;
     public double Temperature { get; set; } = 0.7;
 }
@@ -60,7 +60,8 @@ public class HuggingFaceInferenceClient
             temperature = _options.Temperature
         };
 
-        var url = $"https://api-inference.huggingface.co/models/{_options.ModelId}/v1/chat/completions";
+        // HF serverless inference endpoint (OpenAI-compatible, model specified in body)
+        var url = "https://api-inference.huggingface.co/v1/chat/completions";
 
         var request = new HttpRequestMessage(HttpMethod.Post, url)
         {
