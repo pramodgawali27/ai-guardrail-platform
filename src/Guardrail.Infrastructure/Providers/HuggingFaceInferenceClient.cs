@@ -10,7 +10,7 @@ namespace Guardrail.Infrastructure.Providers;
 public class HuggingFaceOptions
 {
     public string Token { get; set; } = string.Empty;
-    public string ModelId { get; set; } = "Qwen/Qwen2.5-7B-Instruct";
+    public string ModelId { get; set; } = "Qwen/Qwen2.5-72B-Instruct";
     public int MaxTokens { get; set; } = 512;
     public double Temperature { get; set; } = 0.7;
 }
@@ -60,8 +60,7 @@ public class HuggingFaceInferenceClient
             temperature = _options.Temperature
         };
 
-        // api-inference.huggingface.co is shut down — router.huggingface.co is the replacement
-        var url = "https://router.huggingface.co/hf-inference/v1/chat/completions";
+        var url = $"https://router.huggingface.co/hf-inference/models/{Uri.EscapeDataString(_options.ModelId)}/v1/chat/completions";
 
         var request = new HttpRequestMessage(HttpMethod.Post, url)
         {
