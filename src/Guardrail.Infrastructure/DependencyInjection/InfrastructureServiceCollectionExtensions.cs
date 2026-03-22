@@ -81,6 +81,9 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IContentSafetyProvider>(sp => sp.GetRequiredService<AzureContentSafetyProvider>());
         services.AddScoped<IPromptShieldProvider>(sp => sp.GetRequiredService<AzurePromptShieldProvider>());
 
+        services.Configure<HuggingFaceOptions>(configuration.GetSection("HuggingFace"));
+        services.AddHttpClient<HuggingFaceInferenceClient>();
+
         services.AddSingleton<EvaluationBackgroundQueue>();
         services.AddHostedService<EvaluationWorker>();
         services.AddHostedService<PlatformInitializationHostedService>();
