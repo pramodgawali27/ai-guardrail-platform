@@ -82,6 +82,16 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IPromptShieldProvider>(sp => sp.GetRequiredService<AzurePromptShieldProvider>());
 
         services.Configure<HuggingFaceOptions>(configuration.GetSection("HuggingFace"));
+        // Also accept HF_TOKEN — the standard HuggingFace Spaces secret name
+        services.PostConfigure<HuggingFaceOptions>(opts =>
+        {
+            if (string.IsNullOrWhiteSpace(opts.Token))
+            {
+                var envToken = Environment.GetEnvironmentVariable("HF_TOKEN");
+                if (!string.IsNullOrWhiteSpace(envToken))
+                    opts.Token = envToken;
+            }
+        });
         services.AddHttpClient<HuggingFaceInferenceClient>();
 
         services.AddSingleton<EvaluationBackgroundQueue>();
