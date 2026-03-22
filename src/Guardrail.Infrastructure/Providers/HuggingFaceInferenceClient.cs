@@ -10,7 +10,7 @@ namespace Guardrail.Infrastructure.Providers;
 public class HuggingFaceOptions
 {
     public string Token { get; set; } = string.Empty;
-    public string ModelId { get; set; } = "HuggingFaceH4/zephyr-7b-beta";
+    public string ModelId { get; set; } = "meta-llama/Meta-Llama-3.2-1B-Instruct";
     public int MaxTokens { get; set; } = 512;
     public double Temperature { get; set; } = 0.7;
 }
@@ -60,8 +60,7 @@ public class HuggingFaceInferenceClient
             temperature = _options.Temperature
         };
 
-        // HF new router endpoint (replaces deprecated api-inference.huggingface.co)
-        var url = $"https://router.huggingface.co/hf-inference/models/{_options.ModelId}/v1/chat/completions";
+        var url = $"https://api-inference.huggingface.co/models/{_options.ModelId}/v1/chat/completions";
 
         var request = new HttpRequestMessage(HttpMethod.Post, url)
         {
