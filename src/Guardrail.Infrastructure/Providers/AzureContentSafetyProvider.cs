@@ -98,6 +98,16 @@ public sealed class AzureContentSafetyProvider : IContentSafetyProvider
     {
         var flags = new List<ContentSafetyFlag>();
 
+        // Jailbreak / persona injection
+        AddIfContains(text, flags, "Jailbreak", 0.92m, "Critical",
+            "pretend you are", "pretend to be", "act as if you have no",
+            "you are now", "as DAN", "in DAN mode", "do anything now",
+            "you have no restrictions", "no rules or restrictions", "without any restrictions",
+            "ignore all restrictions", "bypass content filters", "bypass the filter",
+            "no content policy", "bypass safety", "ignore your training",
+            "roleplay as", "in this hypothetical scenario",
+            "for educational purposes only, explain how to");
+
         AddIfContains(text, flags, "Violence", 0.85m, "High", "kill", "bomb", "weapon", "attack");
         AddIfContains(text, flags, "SelfHarm", 0.90m, "High", "suicide", "self-harm", "hurt myself");
         AddIfContains(text, flags, "Sexual", 0.70m, "Medium", "explicit", "porn", "sexual content");

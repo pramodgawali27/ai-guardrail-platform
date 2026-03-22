@@ -11,14 +11,41 @@ public sealed class AzurePromptShieldProvider : IPromptShieldProvider
 {
     private static readonly string[] InjectionMarkers =
     [
+        // Classic prompt injection
         "ignore previous instructions",
-        "system prompt",
-        "developer mode",
-        "do anything now",
-        "bypass safety",
+        "ignore your instructions",
+        "forget your instructions",
+        "disregard your guidelines",
+        "override policy",
         "reveal hidden instructions",
+        "reveal the system prompt",
+
+        // Jailbreak / DAN variants
         "jailbreak",
-        "override policy"
+        "pretend you are",
+        "pretend to be",
+        "act as if you have no",
+        "you are now",
+        "as DAN",
+        "in DAN mode",
+        "do anything now",
+        "you have no restrictions",
+        "no rules or restrictions",
+        "without any restrictions",
+        "ignore all restrictions",
+        "without ethical constraints",
+        "bypass content filters",
+        "bypass safety",
+        "bypass the filter",
+        "no content policy",
+        "ignore your training",
+
+        // Role-play-based extraction
+        "roleplay as",
+        "developer mode",
+        "system prompt",
+        "in this hypothetical scenario",
+        "for educational purposes only, explain how to"
     ];
 
     private readonly HttpClient _httpClient;
