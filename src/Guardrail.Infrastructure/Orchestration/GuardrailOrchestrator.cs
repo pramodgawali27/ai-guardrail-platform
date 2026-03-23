@@ -219,6 +219,22 @@ public sealed class GuardrailOrchestrator : IGuardrailOrchestrator
             outputValidation.RedactedOutput ?? request.ModelOutput,
             ct: cancellationToken);
 
+        // Scan model output for indirect injection (e.g. output contains "Ignore all previous instructions")
+        var promptShieldResult = await _promptShieldProvider.DetectInjectionAsync(
+            new PromptShieldRequest
+            {
+                UserPrompt = string.Empty,
+                Documents =
+                [
+                    new DocumentContext
+                    {
+                        DocumentId = "model-output",
+                        Content = outputValidation.RedactedOutput ?? request.ModelOutput
+                    }
+                ]
+            },
+            cancellationToken);
+
         var policyEvaluation = await _policyEngine.EvaluatePolicyAsync(
             request.TenantContext,
             new EvaluationInput
@@ -230,7 +246,7 @@ public sealed class GuardrailOrchestrator : IGuardrailOrchestrator
             cancellationToken);
 
         var riskEvaluation = await _riskEngine.EvaluateRiskAsync(
-            BuildRiskInput(request.TenantContext, policy, contentSafetyResult, null, policyEvaluation, null, null, outputValidation),
+            BuildRiskInput(request.TenantContext, policy, contentSafetyResult, promptShieldResult, policyEvaluation, null, null, outputValidation),
             cancellationToken);
 
         stopwatch.Stop();

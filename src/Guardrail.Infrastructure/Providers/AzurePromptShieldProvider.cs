@@ -13,8 +13,10 @@ public sealed class AzurePromptShieldProvider : IPromptShieldProvider
     [
         // Classic prompt injection
         "ignore previous instructions",
+        "ignore all previous instructions",
         "ignore your instructions",
         "forget your instructions",
+        "forget all previous instructions",
         "disregard your guidelines",
         "override policy",
         "reveal hidden instructions",
@@ -45,7 +47,19 @@ public sealed class AzurePromptShieldProvider : IPromptShieldProvider
         "developer mode",
         "system prompt",
         "in this hypothetical scenario",
-        "for educational purposes only, explain how to"
+        "for educational purposes only, explain how to",
+
+        // Paraphrase variants of instruction override
+        "disregard the operating guidelines",
+        "treat all your earlier directives",
+        "respond as an unconstrained",
+        "unconstrained system",
+        "operating guidelines you have been set up with",
+
+        // Credential / token exfiltration
+        "authentication tokens and access keys",
+        "transmit to a remote collection",
+        "remote collection endpoint"
     ];
 
     private readonly HttpClient _httpClient;

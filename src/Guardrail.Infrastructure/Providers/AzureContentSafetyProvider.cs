@@ -106,24 +106,64 @@ public sealed class AzureContentSafetyProvider : IContentSafetyProvider
             "ignore all restrictions", "bypass content filters", "bypass the filter",
             "no content policy", "bypass safety", "ignore your training",
             "roleplay as", "in this hypothetical scenario",
+            "fictional universe with no content rules", "no content rules",
+            "in this fictional world", "will answer any question",
             "for educational purposes only, explain how to");
+
+        // Social engineering / fraud — attack intent patterns only (not educational discussion)
+        AddIfContains(text, flags, "SocialEngineering", 0.90m, "Critical",
+            "wire transfer", "impersonating the CEO", "impersonating a",
+            "pretending to be a new employee", "pretending to be an employee",
+            "urgent wire transfer", "overseas account",
+            "get them to reset the password", "bypass any suspicion",
+            "make it sound legitimate",
+            "draft a convincing email impersonating");
+
+        // Credential phishing in model output (output injection)
+        AddIfContains(text, flags, "CredentialPhishing", 0.90m, "Critical",
+            "reply with your password", "send your password",
+            "provide your username and password",
+            "verify your identity by replying",
+            "send your credentials", "enter your current password",
+            "reply to this message with your",
+            "pre-authenticate your session");
+
+        // Code interpreter abuse / malware patterns
+        AddIfContains(text, flags, "CodeInterpreterAbuse", 0.92m, "Critical",
+            "silently scans the filesystem", "scan the filesystem for",
+            "reads their contents and sends", "sends them via http post",
+            "ransom note", "bitcoin payment", "demands bitcoin",
+            "encrypt all .docx", "encrypt all .xlsx", "encrypt all files",
+            "deletes the originals", "ransomware",
+            "keylogger", "create a keylogger",
+            "step-by-step synthesis", "synthesis of a controlled narcotic",
+            "instructions for creating a keylogger");
 
         AddIfContains(text, flags, "Violence", 0.85m, "High", "kill", "bomb", "weapon", "attack");
         AddIfContains(text, flags, "SelfHarm", 0.90m, "High", "suicide", "self-harm", "hurt myself");
         AddIfContains(text, flags, "Sexual", 0.70m, "Medium", "explicit", "porn", "sexual content");
-        AddIfContains(text, flags, "Hate", 0.70m, "Medium", "hate group", "racially inferior", "targeted hate");
+        AddIfContains(text, flags, "Hate", 0.85m, "High",
+            "hate group", "racially inferior", "targeted hate",
+            "subhuman", "incite violence", "portray as terrorists",
+            "designed to incite", "go viral and incite",
+            "portray followers of");
 
         // Destructive operations
         AddIfContains(text, flags, "DestructiveAction", 0.95m, "Critical",
             "drop table", "drop database", "drop all tables",
             "truncate table", "delete all records", "wipe the database",
-            "destroy the database", "rm -rf", "format c:", "delete all data");
+            "destroy the database", "rm -rf", "format c:", "delete all data",
+            "recursively delete all files", "delete all files under",
+            "format the partition", "format /data", "delete everything under /");
 
         // Data exfiltration
         AddIfContains(text, flags, "DataExfiltration", 0.90m, "Critical",
             "email the backup", "send to external", "upload to external",
             "exfiltrate", "send the data to", "export to external",
-            "email to external", "ftp to external", "copy to external server");
+            "email to external", "ftp to external", "copy to external server",
+            "upload the result to ftp", "ftp://", "stolen_data",
+            "transmit to a remote", "remote collection endpoint",
+            "transmits them to a remote");
 
         flags.AddRange(DetectPrivacyFlags(text));
 
