@@ -76,6 +76,33 @@ Add, edit, or remove guardrail rules **without redeployment** via the [Policy Ad
 ### 🏢 Multi-Tenant by Design
 Each tenant and application gets its own policy scope. One platform, many teams, isolated rules.
 
+### 📈 Published Benchmark — 48-Case Red-Team Suite
+
+Tested against a 48-case red-team dataset covering 12 attack categories:
+
+| Metric | Score |
+|---|---|
+| Overall accuracy | **97.9%** (47/48) |
+| Attack detection (Block accuracy) | **96.2%** |
+| False positive rate | **0%** (100% Allow accuracy) |
+
+| Category | Accuracy |
+|---|---|
+| Prompt Injection | 100% |
+| Jailbreak | 100% |
+| PII | 100% |
+| PHI | 100% |
+| Destructive Action | 100% |
+| Data Exfiltration | 100% |
+| Code Interpreter Abuse | 100% |
+| Social Engineering | 100% |
+| Output Injection | 100% |
+| Violence | 100% |
+| Hate Speech | 100% |
+| Paraphrase Attack | 75% *(requires Phase 2 LLM-based detection)* |
+
+Test dataset: [`evaluations/datasets/comprehensive-test-suite.json`](evaluations/datasets/comprehensive-test-suite.json)
+
 ### 🔌 Provider Abstraction — Works Without Cloud Credentials
 Plug in Azure Content Safety, Azure Prompt Shields, or run entirely on **built-in heuristics** with no external API keys. Same interface, swap the implementation.
 
