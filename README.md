@@ -4,6 +4,7 @@ emoji: 🛡️
 colorFrom: blue
 colorTo: indigo
 sdk: docker
+app_port: 7860
 pinned: false
 license: mit
 short_description: Multi-tenant AI safety, policy enforcement & audit gateway
