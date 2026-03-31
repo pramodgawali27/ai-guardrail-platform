@@ -138,17 +138,17 @@ Every decision is logged. Borderline cases are flagged for human review with a f
 │  └──────┬──────┘  └──────┬───────┘  └─────┬──────┘ │
 │         │                │                 │        │
 │  ┌──────▼──────────────────────────────────▼──────┐ │
-│  │              Provider Abstractions              │ │
-│  │  IContentSafetyProvider  IPromptShieldProvider  │ │
+│  │         ContentSafetyProvider                  │ │
+│  │         PromptShieldProvider                   │ │
 │  └───────────────┬─────────────────┬──────────────┘ │
 │                  │                 │                 │
 │         Azure API          Heuristic Fallback        │
 └─────────────────────────────────────────────────────┘
          ↓                        ↓
-   EF Core (SQLite/PostgreSQL)   Audit + Review DB
+   SQLAlchemy (SQLite/PostgreSQL)  Audit DB
 ```
 
-**Tech stack:** .NET 9 · ASP.NET Core · EF Core · SQLite (demo) · PostgreSQL (prod) · OpenTelemetry · Serilog · Docker
+**Tech stack:** Python 3.12 · FastAPI · SQLAlchemy · Pydantic · httpx · SQLite (demo) · PostgreSQL (prod) · Docker
 
 ---
 
@@ -157,17 +157,18 @@ Every decision is logged. Borderline cases are flagged for human review with a f
 ### Option 1: Docker (recommended)
 
 ```bash
-git clone https://github.com/PramodGawali/ai-guardrail-platform.git
+git clone https://github.com/pramodgawali27/ai-guardrail-platform.git
 cd ai-guardrail-platform
-docker compose up --build
+docker build -t guardrail . && docker run -p 7860:7860 guardrail
 ```
 
-Open: `http://localhost:8080` for the demo UI, `http://localhost:8080/swagger` for the API.
+Open: `http://localhost:7860` for the demo UI, `http://localhost:7860/docs` for the API.
 
-### Option 2: .NET SDK
+### Option 2: Python (uvicorn)
 
 ```bash
-dotnet run --project src/Guardrail.API/Guardrail.API.csproj
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 7860
 ```
 
 No configuration required — heuristic fallback runs without any API keys.
@@ -175,7 +176,7 @@ No configuration required — heuristic fallback runs without any API keys.
 ### Evaluate a prompt via API
 
 ```bash
-curl -X POST http://localhost:8080/api/guardrail/evaluate-input \
+curl -X POST http://localhost:7860/api/guardrail/evaluate-input \
   -H "Content-Type: application/json" \
   -H "X-Tenant-Id: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0001" \
   -H "X-Application-Id: bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0002" \
@@ -188,8 +189,8 @@ Response:
 ```json
 {
   "decision": "Block",
-  "normalizedScore": 92,
-  "flags": [
+  "normalizedRiskScore": 92,
+  "detectedSignals": [
     { "category": "Jailbreak", "score": 0.92, "severity": "Critical" }
   ],
   "rationale": "overall=92; injection=92; decision=Block"
@@ -228,22 +229,25 @@ This is Phase 1 (heuristic + pattern-based). The [implementation plan](docs/impl
 ## Project Structure
 
 ```
-src/
-  Guardrail.Core/           # Domain abstractions, interfaces
-  Guardrail.Application/    # Use cases, pipeline orchestration
-  Guardrail.Infrastructure/ # Provider implementations, EF Core
-  Guardrail.API/            # ASP.NET Core endpoints, UI
-tests/
-  Guardrail.UnitTests/
-  Guardrail.IntegrationTests/
+app/
+  main.py           # FastAPI app, all routes
+  config.py         # Pydantic settings (env vars)
+  database.py       # SQLAlchemy models (PolicyProfile, AuditEvent)
+  providers.py      # ContentSafetyProvider + PromptShieldProvider
+  risk_engine.py    # Weighted risk scoring (6 dimensions)
+  policy_engine.py  # Multi-tenant policy resolution
+  hf_client.py      # HuggingFace inference via httpx
+  seed.py           # Database seeding from JSON policy files
 evaluations/
-  datasets/                 # 44-case regression test suite
+  datasets/         # 48-case red-team test suite
 policies/
-  samples/                  # 5 seeded policy JSON files
+  samples/          # 5 seeded policy JSON files
+src/
+  Guardrail.API/wwwroot/  # Demo UI + Admin UI (static HTML)
 docs/
   architecture.md
   implementation-plan.md
-  guardrail-examples.md     # Positive/negative examples per guardrail type
+  guardrail-examples.md   # Positive/negative examples per guardrail type
 ```
 
 ---
@@ -251,9 +255,10 @@ docs/
 ## Contributing
 
 PRs welcome. Areas most useful right now:
-- LlamaGuard integration (Phase 2 of the roadmap)
+- LlamaGuard integration (Phase 1 of the roadmap) — replace heuristics with `meta-llama/LlamaGuard-3-8B`
 - More heuristic patterns and test cases in `evaluations/datasets/`
-- SDK wrappers (Python client, LangChain integration)
+- LangChain / LlamaIndex middleware wrapper
+- SDK clients for other languages (TypeScript, Java)
 
 ---
 

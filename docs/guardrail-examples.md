@@ -12,9 +12,9 @@ Each section shows a **safe prompt** (expected: Allow) and a **risky prompt** (e
 
 **API:**
 ```bash
-curl -X POST http://localhost:8080/api/demo/chat \
+curl -X POST http://localhost:7860/api/demo/chat \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "<paste prompt here>", "appType": "<app-key>"}'
+  -d '{"userPrompt": "<paste prompt here>", "applicationContext": "<app-key>"}'
 ```
 
 App keys: `plain-language` · `enterprise-copilot` · `healthcare` · `developer`
