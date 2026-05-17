@@ -43,21 +43,29 @@ public class HuggingFaceInferenceClient
         string userPrompt,
         string? systemPrompt = null,
         CancellationToken ct = default)
+        => await ChatAsync(
+            BuildMessages(userPrompt, systemPrompt),
+            null,
+            null,
+            null,
+            ct);
+
+    public async Task<HuggingFaceChatResponse> ChatAsync(
+        IReadOnlyCollection<HfMessage> messages,
+        string? modelId = null,
+        int? maxTokens = null,
+        double? temperature = null,
+        CancellationToken ct = default)
     {
         if (!IsConfigured)
             return HuggingFaceChatResponse.NotConfigured();
 
-        var messages = new List<HfMessage>();
-        if (!string.IsNullOrWhiteSpace(systemPrompt))
-            messages.Add(new HfMessage("system", systemPrompt));
-        messages.Add(new HfMessage("user", userPrompt));
-
         var payload = new
         {
-            model = _options.ModelId,
+            model = string.IsNullOrWhiteSpace(modelId) ? _options.ModelId : modelId,
             messages,
-            max_tokens = _options.MaxTokens,
-            temperature = _options.Temperature
+            max_tokens = maxTokens ?? _options.MaxTokens,
+            temperature = temperature ?? _options.Temperature
         };
 
         var url = "https://router.huggingface.co/together/v1/chat/completions";
@@ -75,7 +83,7 @@ public class HuggingFaceInferenceClient
 
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("HF Inference API returned {Status} for model {Model}: {Body}", response.StatusCode, _options.ModelId, body);
+                _logger.LogWarning("HF Inference API returned {Status} for model {Model}: {Body}", response.StatusCode, payload.model, body);
                 return HuggingFaceChatResponse.Error($"Model returned {(int)response.StatusCode}: {body}");
             }
 
@@ -90,7 +98,7 @@ public class HuggingFaceInferenceClient
             {
                 Success = true,
                 Content = content.Trim(),
-                ModelId = _options.ModelId
+                ModelId = payload.model
             };
         }
         catch (Exception ex)
@@ -98,6 +106,15 @@ public class HuggingFaceInferenceClient
             _logger.LogError(ex, "HF Inference API call failed");
             return HuggingFaceChatResponse.Error("Failed to reach the model. Check your HF_TOKEN secret.");
         }
+    }
+
+    private static IReadOnlyCollection<HfMessage> BuildMessages(string userPrompt, string? systemPrompt)
+    {
+        var messages = new List<HfMessage>();
+        if (!string.IsNullOrWhiteSpace(systemPrompt))
+            messages.Add(new HfMessage("system", systemPrompt));
+        messages.Add(new HfMessage("user", userPrompt));
+        return messages;
     }
 }
 

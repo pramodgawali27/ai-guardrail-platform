@@ -2,264 +2,246 @@
 
 ## System Overview
 
-The Enterprise AI Guardrail Platform is implemented as a **Python FastAPI gateway** that evaluates AI traffic before and after model execution. The platform applies layered guardrails:
+The Enterprise AI Guardrail Platform is a **.NET 9 multi-tenant guardrail gateway**. It can be used in three ways:
 
-1. Input evaluation — content safety + prompt injection detection
-2. Policy enforcement — tenant/application-scoped business rules
-3. Risk aggregation — weighted scoring across 6 dimensions
-4. Model invocation — HuggingFace Inference API (only if input passes)
-5. Output evaluation — re-scan model response before it reaches the user
-6. Audit — every decision is recorded
+1. As a REST guardrail API for explicit pre/post model checks
+2. As an MCP server over JSON-RPC HTTP for agent ecosystems
+3. As an OpenAI-style chat proxy for applications that expect `/v1/chat/completions`
 
-```
-Your App → [Input Guardrail] → HuggingFace LLM → [Output Guardrail] → User
-                ↓                                        ↓
-           Block / Allow                          Block / Redact / Allow
-           Audit Trail                              Audit Trail
-```
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| API framework | FastAPI (Python 3.12) |
-| Data validation | Pydantic v2 + Pydantic Settings |
-| ORM / DB | SQLAlchemy 2 — SQLite (demo), PostgreSQL (prod) |
-| Async HTTP | httpx |
-| LLM inference | HuggingFace Inference API (Together router) |
-| Static UI | Vanilla HTML/JS served via `StaticFiles` |
-| Container | Docker (python:3.12-slim, port 7860) |
-
----
-
-## Repository Structure
+At its core, the platform evaluates prompts, model outputs, tool requests, and context sources against tenant/application policy before traffic reaches end users or downstream actions.
 
 ```
-app/
-  __init__.py         # package marker
-  main.py             # FastAPI app, all HTTP routes, startup hook
-  config.py           # Pydantic BaseSettings (reads env vars)
-  database.py         # SQLAlchemy engine + ORM models
-  providers.py        # ContentSafetyProvider, PromptShieldProvider
-  risk_engine.py      # WeightedRiskEngine — 6-dimension scoring
-  policy_engine.py    # resolve_policy(), evaluate_policy()
-  hf_client.py        # call_hf() — async HuggingFace chat completions
-  seed.py             # seed_database() — loads JSON policy files on startup
+Client / Agent / App
+        |
+        +--> REST Guardrail API
+        +--> MCP Server (/mcp)
+        +--> OpenAI-style Proxy (/v1/chat/completions)
+                    |
+                    v
+         Guardrail Orchestrator
+    +--------+--------+--------+--------+
+    | Policy | Safety | Tools  | Output |
+    | Engine | Scan   |/Context| Check  |
+    +--------+--------+--------+--------+
+                    |
+                    v
+         Audit / Review / Evaluation Data
+                    |
+                    v
+            SQLite or PostgreSQL
+```
 
-policies/
-  samples/            # 5 seeded policy JSON files
+## Solution Layout
 
-evaluations/
-  datasets/           # 48-case red-team test suite (JSON)
-
+```
 src/
-  Guardrail.API/
-    wwwroot/          # Demo UI (index.html) + Admin UI (admin.html)
-
-docs/
-  architecture.md     # this file
-  implementation-plan.md
-  guardrail-examples.md
+  Guardrail.API/            ASP.NET Core host, controllers, demo/admin UI
+  Guardrail.Application/    MediatR commands, validators, behaviors
+  Guardrail.Core/           Domain entities, enums, abstractions
+  Guardrail.Infrastructure/ EF Core, policy engine, providers, firewalls
+tests/
+  Guardrail.UnitTests/
+  Guardrail.IntegrationTests/
+policies/samples/           Seed policy JSON files
+evaluations/datasets/       Seed regression and red-team datasets
+app/                        Legacy Python prototype retained for reference
 ```
 
----
+## Request Paths
 
-## Component Responsibilities
+### 1. REST Guardrail API
 
-### `app/main.py` — API Layer
+- `POST /api/guardrail/evaluate-input`
+- `POST /api/guardrail/evaluate-output`
+- `POST /api/guardrail/evaluate-full`
+- `POST /api/tools/validate`
+- `GET /api/tools/registry`
 
-- Defines all HTTP routes (see API Reference below).
-- Resolves tenant/application from `X-Tenant-Id` / `X-Application-Id` headers.
-- Orchestrates the 3-step pipeline: input guardrail → model call → output guardrail.
-- Serves static UI files from `wwwroot/`.
+Use this path when your application already controls its own model invocation and wants the platform to make allow/block/redact/escalate decisions around it.
 
-### `app/config.py` — Settings
+### 2. MCP Server
 
-Reads configuration from environment variables via `pydantic_settings.BaseSettings`:
+- `POST /mcp`
+- `GET /mcp` returns `405` because SSE streams are not enabled
 
-| Env var | Default | Purpose |
-|---|---|---|
-| `HF_TOKEN` | `""` | HuggingFace API token |
-| `HF_MODEL_ID` | `Qwen/Qwen2.5-7B-Instruct-Turbo` | Model for demo chat |
-| `HF_MAX_TOKENS` | `512` | Max tokens per response |
-| `DATABASE_URL` | `sqlite:///./guardrail.db` | Database connection string |
-| `POLICY_SEED_PATH` | `/app/policies/samples` | Path to policy JSON files |
-| `SEED_ON_STARTUP` | `true` | Seed policies on startup |
+The MCP surface exposes these server tools:
 
-### `app/database.py` — Persistence
+- `guardrail.evaluate_input`
+- `guardrail.evaluate_output`
+- `guardrail.evaluate_full`
+- `guardrail.get_tool_registry`
+- `guardrail.get_manifest`
 
-Two ORM models persisted to SQLite/PostgreSQL:
+This gives agent runtimes a standard JSON-RPC tool surface without requiring a custom SDK first.
 
-- **`PolicyProfile`** — tenant/application-scoped guardrail rules (forbidden phrases, thresholds, domain restrictions)
-- **`AuditEvent`** — one row per guardrail evaluation (decision, score, flags, timestamp)
+### 3. OpenAI-style Proxy
 
-`Base.metadata.create_all()` runs on startup — no migration tool required for SQLite.
+- `POST /v1/chat/completions`
+- `POST /api/proxy/chat/completions`
 
-### `app/providers.py` — Safety Providers
+This route:
 
-#### `ContentSafetyProvider`
-Heuristic classifier covering 10 threat categories:
+1. Evaluates the incoming transcript
+2. Calls the configured HuggingFace router-backed model
+3. Evaluates the generated output
+4. Returns either:
+   - a normal chat completion with guardrail metadata, or
+   - a `403` error when the request/output is blocked or escalated
 
-| Category | Score | Severity |
-|---|---|---|
-| Jailbreak | 0.92 | Critical |
-| SocialEngineering | 0.90 | Critical |
-| CredentialPhishing | 0.90 | Critical |
-| CodeInterpreterAbuse | 0.92 | Critical |
-| Violence | 0.85 | High |
-| SelfHarm | 0.90 | High |
-| Sexual | 0.70 | Medium |
-| Hate | 0.85 | High |
-| DestructiveAction | 0.95 | Critical |
-| DataExfiltration | 0.90 | Critical |
+## Domain and Policy Model
 
-Plus regex-based PII/PHI detection (email, SSN pattern, MRN pattern).
+The platform is policy-first and multi-tenant.
 
-Uses word-boundary regex (`\b`) for single-word markers to avoid false positives (e.g. "skills" not matching "kill").
+### Tenant resolution
 
-#### `PromptShieldProvider`
-Detects prompt injection and jailbreak markers in both:
-- **Direct injection** — user prompt contains an override marker
-- **Indirect injection** — documents/model output passed as context contain markers
+REST requests use:
 
-35+ marker strings covering DAN variants, instruction override, role override, credential exfiltration, and paraphrase patterns.
+- `X-Tenant-Id`
+- `X-Application-Id`
+- optional `X-Session-Id`
 
-### `app/risk_engine.py` — Weighted Risk Scoring
+MCP requests carry tenant context in tool arguments.
 
-Six dimensions combine into a single normalized 0–100 score:
+### Policy precedence
 
-| Dimension | Weight | Source |
-|---|---|---|
-| Content Safety | 30% | `ContentSafetyProvider` |
-| Privacy (PII/PHI) | 25% | `ContentSafetyProvider` (PII/PHI flags) |
-| Prompt Injection | 20% | `PromptShieldProvider` |
-| Business Rules | 10% | `policy_engine.evaluate_policy()` |
-| Action Safety | 10% | DestructiveAction / DataExfiltration flags |
-| Output Quality | 5% | Reserved (currently 0) |
+`JsonPolicyEngine` merges policy profiles in priority order:
 
-Decision thresholds:
+1. Global
+2. Tenant
+3. Application
 
-| Score | Decision |
-|---|---|
-| ≥ 90 | Block |
-| ≥ 80 | Escalate |
-| ≥ 35 | AllowWithConstraints |
-| < 35 | Allow |
+The resolved `EffectivePolicy` drives:
 
-### `app/policy_engine.py` — Policy Resolution
+- forbidden phrases
+- tool allow/deny/approval lists
+- data source restrictions
+- redaction and evidence requirements
+- risk thresholds and weights
 
-`resolve_policy()` queries `PolicyProfile` with priority:
+## Guardrail Pipeline
 
-1. Application-scoped policy (highest priority)
-2. Tenant-scoped policy
-3. Global baseline
+### Input evaluation
 
-`evaluate_policy()` checks forbidden phrases from the resolved policy against the prompt.
+`GuardrailOrchestrator.EvaluateInputAsync()` performs:
 
-### `app/hf_client.py` — LLM Client
+1. Effective policy resolution
+2. Content safety analysis
+3. Prompt injection detection
+4. Policy evaluation
+5. Tool firewall validation
+6. Context firewall validation
+7. Weighted risk scoring
+8. Audit persistence and optional review-case creation
 
-`call_hf(prompt, settings)` — async POST to `router.huggingface.co/together/v1/chat/completions`. Returns the assistant message text. Falls back to a static message when `HF_TOKEN` is not configured.
+### Output evaluation
 
-### `app/seed.py` — Database Seeding
+`GuardrailOrchestrator.EvaluateOutputAsync()` performs:
 
-`seed_database()` reads all `.json` files from `POLICY_SEED_PATH`, deserializes each as a `PolicyProfile`, and inserts any that don't already exist (idempotent on `name`).
+1. Output validation and redaction
+2. Content safety analysis of the final/redacted output
+3. Indirect injection detection on model output
+4. Policy evaluation against output content
+5. Weighted risk scoring
+6. Audit persistence and optional review-case creation
 
----
+### Full evaluation
 
-## API Reference
+`EvaluateFullAsync()` is a convenience path for callers that already have both prompt and response available.
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/version` | Service version |
-| `GET` | `/health` | Health check |
-| `POST` | `/api/guardrail/evaluate-input` | Evaluate a user prompt before sending to LLM |
-| `POST` | `/api/guardrail/evaluate-output` | Evaluate model output before returning to user |
-| `POST` | `/api/demo/chat` | Full 3-step pipeline (input → LLM → output) |
-| `GET` | `/api/policies` | List all active policies |
-| `GET` | `/api/policies/{tenant_id}/{application_id}` | Policies for a specific app |
-| `POST` | `/api/policies` | Create a policy |
-| `PUT` | `/api/policies/{policy_id}` | Update a policy |
-| `DELETE` | `/api/policies/{policy_id}` | Soft-delete a policy |
+## Tool Registry
 
-Interactive docs available at `/docs` (Swagger UI) when running locally.
+The tool registry is policy-backed and tenant/application-aware.
 
-**Headers for evaluate-input / evaluate-output:**
+`PolicyBackedToolRegistryService` merges:
 
-```
-X-Tenant-Id: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0001
-X-Application-Id: bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0002
-```
+- the effective policy’s `allowedTools`, `deniedTools`, and `approvalRequiredTools`
+- persisted `ToolPolicy` rows from the database
+- environment restrictions
 
----
+The registry response tells clients:
 
-## Request Lifecycle
+- whether a tool is allowed
+- whether human approval is required
+- declared parameter restrictions
+- action risk classification
+- whether the rule came only from policy or from policy + database metadata
 
-### Input evaluation (`/api/guardrail/evaluate-input`)
+This is the main discovery mechanism for downstream orchestrators that want to understand what actions an agent may attempt.
 
-1. Read `X-Tenant-Id` / `X-Application-Id` headers
-2. `resolve_policy()` — fetch effective policy from DB
-3. `ContentSafetyProvider.analyze_text(prompt)` — heuristic scan
-4. `PromptShieldProvider.detect_injection(prompt)` — injection markers
-5. `evaluate_policy(prompt, policy)` — forbidden phrases
-6. `evaluate_risk(content, shield, policy_result)` — weighted aggregate
-7. Return decision JSON
+## Persistence and Startup
 
-### Demo chat (`/api/demo/chat`)
+`GuardrailDbContext` stores:
 
-Same as above for input, then if `isAllowed`:
+- policy profiles and rules
+- tool policies
+- guardrail executions
+- risk assessments and signals
+- audit events
+- human review cases
+- evaluation datasets and results
 
-1. `call_hf(prompt, settings)` — get AI response
-2. `ContentSafetyProvider.analyze_text(ai_text)` — scan output
-3. `PromptShieldProvider.detect_injection("", documents=[ai_text])` — indirect injection
-4. `evaluate_policy(None, ai_text, policy)` — output policy
-5. `evaluate_risk(...)` — output risk score
-6. Return `{ inputGuardrail, modelResponse, outputGuardrail }`
+Startup behavior is controlled by `Guardrail` settings:
 
----
+- `ApplyDatabaseOnStartup`
+- `SeedDataOnStartup`
+- `PolicySeedPath`
+- `EvaluationSeedPath`
 
-## Multi-Tenant Model
+SQLite is used by default when no PostgreSQL connection string is configured; PostgreSQL is used for production.
 
-Each `PolicyProfile` row has `tenant_id`, `application_id`, and `scope` (`Global` / `Tenant` / `Application`). Resolution priority is Application > Tenant > Global. One database, many tenants — isolation is enforced at the application layer.
+## Providers
 
----
+### Content safety
 
-## Security Controls
+`AzureContentSafetyProvider`
 
-- **Auth:** disabled by default for demo (HuggingFace Spaces). For production, add FastAPI middleware for JWT/API key validation.
-- **PII:** raw prompts are not retained beyond the request — only the decision and score are written to `AuditEvent`.
-- **Rate limiting:** enforce via reverse proxy (nginx/Cloudflare) in production.
-- **Secrets:** inject `HF_TOKEN` and `DATABASE_URL` via environment variables — never commit to source.
+- uses Azure AI Content Safety when configured
+- falls back to heuristic analysis when enabled
 
----
+### Prompt injection
 
-## Deployment
+`AzurePromptShieldProvider`
 
-### HuggingFace Spaces (current)
+- uses Azure Prompt Shields when configured
+- falls back to heuristic marker detection when enabled
 
-The Space runs `uvicorn app.main:app --host 0.0.0.0 --port 7860` inside the Docker image. The `README.md` YAML frontmatter declares `app_port: 7860` so HF routes traffic correctly.
+### Model proxy
 
-### Local Docker
+`HuggingFaceInferenceClient`
 
-```bash
-docker build -t guardrail .
-docker run -p 7860:7860 -e HF_TOKEN=hf_xxx guardrail
-```
+- calls the HuggingFace router-compatible chat completions endpoint
+- powers the demo UI and OpenAI-style proxy route
 
-### Production (PostgreSQL)
+## Observability and Operations
 
-```bash
-DATABASE_URL=postgresql+psycopg2://user:pass@host/db \
-HF_TOKEN=hf_xxx \
-uvicorn app.main:app --host 0.0.0.0 --port 7860 --workers 4
-```
+The API host includes:
 
----
+- Serilog console and rolling file logs
+- OpenTelemetry tracing
+- correlation ID middleware
+- rate limiting
+- health checks
+- JWT auth or development auth bypass
 
-## Extension Points
+## Discovery and Integration Metadata
 
-- **Add a new threat category:** add patterns to `ContentSafetyProvider.analyze_text()` in `app/providers.py`.
-- **Replace heuristics with LlamaGuard:** implement an async `classify()` call in `providers.py` and wire it into `ContentSafetyProvider.analyze_text()` behind a feature flag.
-- **Add semantic similarity:** embed prompts with `sentence-transformers/all-MiniLM-L6-v2` and query `pgvector` for nearest attack embeddings — see `docs/implementation-plan.md` Phase 2.
-- **Add a new policy rule type:** extend the policy JSON schema and update `evaluate_policy()` in `app/policy_engine.py`.
+Anonymous discovery endpoints:
+
+- `GET /.well-known/ai-guardrail.json`
+- `GET /api/integrations/manifest`
+
+These advertise:
+
+- REST endpoints
+- MCP endpoint and protocol version
+- expected auth scheme
+- tenant/application header requirements
+
+## Current Gaps
+
+The platform is materially stronger now, but a few product gaps still remain:
+
+1. The MCP endpoint is JSON-RPC compatible, but does not yet provide SSE streams or server-initiated notifications.
+2. The OpenAI-style proxy currently supports non-streaming chat completions only.
+3. The legacy `app/` Python prototype remains in-repo for reference and should eventually be archived or moved to avoid future drift.
+4. There is not yet a first-party SDK layer for tenant bootstrap, auth, and client-side retries.

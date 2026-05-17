@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using System.Threading.RateLimiting;
 using System.Text.Json.Serialization;
 using Guardrail.Application;
+using Guardrail.API.Services;
 using Guardrail.API.Middleware;
 using Guardrail.API.Authentication;
 using Guardrail.Infrastructure.DependencyInjection;
@@ -202,6 +203,7 @@ try
     // ── Application layer ─────────────────────────────────────────────────────
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddScoped<IToolRegistryService, PolicyBackedToolRegistryService>();
 
     // ── Build ─────────────────────────────────────────────────────────────────
     var app = builder.Build();

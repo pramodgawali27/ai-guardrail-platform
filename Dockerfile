@@ -1,18 +1,28 @@
-FROM python:3.12-slim
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+WORKDIR /src
+
+COPY EnterpriseAiGuardrailPlatform.sln ./
+COPY src/Guardrail.Core/Guardrail.Core.csproj src/Guardrail.Core/
+COPY src/Guardrail.Application/Guardrail.Application.csproj src/Guardrail.Application/
+COPY src/Guardrail.Infrastructure/Guardrail.Infrastructure.csproj src/Guardrail.Infrastructure/
+COPY src/Guardrail.API/Guardrail.API.csproj src/Guardrail.API/
+
+RUN dotnet restore src/Guardrail.API/Guardrail.API.csproj
+
+COPY . .
+RUN dotnet publish src/Guardrail.API/Guardrail.API.csproj -c Release -o /app/publish /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY --from=build /app/publish .
+COPY policies /app/policies
+COPY evaluations /app/evaluations
 
-COPY app/ app/
-COPY policies/ policies/
-COPY evaluations/ evaluations/
-COPY src/Guardrail.API/wwwroot/ wwwroot/
-
-ENV HF_TOKEN=""
-ENV POLICY_SEED_PATH="/app/policies/samples"
-ENV EVALUATION_SEED_PATH="/app/evaluations/datasets"
+ENV ASPNETCORE_URLS=http://+:7860
+ENV Guardrail__PolicySeedPath=/app/policies/samples
+ENV Guardrail__EvaluationSeedPath=/app/evaluations/datasets
 
 EXPOSE 7860
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860"]
+ENTRYPOINT ["dotnet", "Guardrail.API.dll"]

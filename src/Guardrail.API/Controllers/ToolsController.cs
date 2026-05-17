@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Guardrail.Core.Abstractions;
 using Guardrail.Core.Domain.ValueObjects;
+using Guardrail.API.Services;
 
 namespace Guardrail.API.Controllers;
 
@@ -19,15 +20,18 @@ public sealed class ToolsController : ControllerBase
 {
     private readonly IToolFirewall _toolFirewall;
     private readonly IPolicyEngine _policyEngine;
+    private readonly IToolRegistryService _toolRegistryService;
     private readonly ILogger<ToolsController> _logger;
 
     public ToolsController(
         IToolFirewall toolFirewall,
         IPolicyEngine policyEngine,
+        IToolRegistryService toolRegistryService,
         ILogger<ToolsController> logger)
     {
         _toolFirewall = toolFirewall;
         _policyEngine = policyEngine;
+        _toolRegistryService = toolRegistryService;
         _logger = logger;
     }
 
@@ -106,10 +110,28 @@ public sealed class ToolsController : ControllerBase
     public async Task<ActionResult<ToolRegistryResponse>> GetRegistry(
         CancellationToken cancellationToken)
     {
-        // TODO: Implement tool registry query once ToolRegistry service is available.
-        await Task.CompletedTask;
+        var tenantContext = ExtractTenantContext();
+        var registry = await _toolRegistryService.GetRegistryAsync(tenantContext, cancellationToken);
 
-        return Ok(new ToolRegistryResponse { Tools = Array.Empty<ToolRegistryEntry>() });
+        return Ok(new ToolRegistryResponse
+        {
+            PolicyName = registry.PolicyName,
+            PolicyVersion = registry.PolicyVersion,
+            AllowToolUse = registry.AllowToolUse,
+            Tools = registry.Tools.Select(tool => new ToolRegistryEntry
+            {
+                Name = tool.Name,
+                Description = tool.Description,
+                Version = $"policy-v{registry.PolicyVersion}",
+                IsAllowed = tool.IsAllowed,
+                RequiresApproval = tool.RequiresApproval,
+                ActionRisk = tool.ActionRisk,
+                PolicySource = tool.PolicySource,
+                AllowedParameters = tool.AllowedParameters,
+                DeniedParameters = tool.DeniedParameters,
+                EnvironmentRestrictions = tool.EnvironmentRestrictions
+            }).ToArray()
+        });
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
@@ -157,6 +179,9 @@ public sealed class ToolCallApiItem
 /// <summary>Tool registry listing response.</summary>
 public sealed class ToolRegistryResponse
 {
+    public string PolicyName { get; init; } = string.Empty;
+    public int PolicyVersion { get; init; }
+    public bool AllowToolUse { get; init; }
     public IReadOnlyList<ToolRegistryEntry> Tools { get; init; } = Array.Empty<ToolRegistryEntry>();
 }
 
@@ -167,4 +192,10 @@ public sealed class ToolRegistryEntry
     public string Description { get; init; } = string.Empty;
     public string Version { get; init; } = string.Empty;
     public bool IsAllowed { get; init; }
+    public bool RequiresApproval { get; init; }
+    public string ActionRisk { get; init; } = string.Empty;
+    public string PolicySource { get; init; } = string.Empty;
+    public IReadOnlyList<string> AllowedParameters { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> DeniedParameters { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> EnvironmentRestrictions { get; init; } = Array.Empty<string>();
 }

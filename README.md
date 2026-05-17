@@ -130,25 +130,20 @@ Every decision is logged. Borderline cases are flagged for human review with a f
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                   Guardrail API                      │
-│  ┌─────────────┐  ┌──────────────┐  ┌────────────┐ │
-│  │  Input      │  │  Risk        │  │  Output    │ │
-│  │  Evaluator  │  │  Engine      │  │  Validator │ │
-│  └──────┬──────┘  └──────┬───────┘  └─────┬──────┘ │
-│         │                │                 │        │
-│  ┌──────▼──────────────────────────────────▼──────┐ │
-│  │         ContentSafetyProvider                  │ │
-│  │         PromptShieldProvider                   │ │
-│  └───────────────┬─────────────────┬──────────────┘ │
-│                  │                 │                 │
-│         Azure API          Heuristic Fallback        │
-└─────────────────────────────────────────────────────┘
-         ↓                        ↓
-   SQLAlchemy (SQLite/PostgreSQL)  Audit DB
+┌──────────────────────────────────────────────────────────────────────┐
+│                          Guardrail.API (.NET 9)                     │
+│  REST: /api/guardrail/*  |  MCP: /mcp  |  OpenAI-style: /v1/chat/* │
+├──────────────────────────────────────────────────────────────────────┤
+│ Application Layer  → MediatR commands / validators                  │
+│ Core Domain        → policies, risk model, tenants, audit entities  │
+│ Infrastructure     → EF Core, policy engine, tool/context firewalls │
+│ Providers          → Azure Content Safety, Prompt Shield, HF router  │
+└──────────────────────────────────────────────────────────────────────┘
+          ↓                         ↓                          ↓
+   SQLite/PostgreSQL         Policy JSON seeds           Audit / review data
 ```
 
-**Tech stack:** Python 3.12 · FastAPI · SQLAlchemy · Pydantic · httpx · SQLite (demo) · PostgreSQL (prod) · Docker
+**Tech stack:** .NET 9 · ASP.NET Core · MediatR · FluentValidation · EF Core · SQLite/PostgreSQL · Serilog · OpenTelemetry · Docker
 
 ---
 
@@ -159,19 +154,41 @@ Every decision is logged. Borderline cases are flagged for human review with a f
 ```bash
 git clone https://github.com/pramodgawali27/ai-guardrail-platform.git
 cd ai-guardrail-platform
-docker build -t guardrail . && docker run -p 7860:7860 guardrail
+docker build -t guardrail .
+docker run -p 7860:7860 \
+  -e Auth__DisableAuth=true \
+  -e Guardrail__ApplyDatabaseOnStartup=true \
+  -e Guardrail__SeedDataOnStartup=true \
+  guardrail
 ```
 
-Open: `http://localhost:7860` for the demo UI, `http://localhost:7860/docs` for the API.
+Open:
+- `http://localhost:7860` for the demo UI
+- `http://localhost:7860/swagger` for OpenAPI in development
+- `http://localhost:7860/.well-known/ai-guardrail.json` for the integration manifest
+- `http://localhost:7860/mcp` for the MCP endpoint
 
-### Option 2: Python (uvicorn)
+### Option 2: Docker Compose
 
 ```bash
-pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 7860
+docker compose up --build
 ```
 
-No configuration required — heuristic fallback runs without any API keys.
+This starts PostgreSQL, Redis, and the .NET API on `http://localhost:8080`.
+
+### Option 3: Local .NET run
+
+```bash
+dotnet run --project src/Guardrail.API
+```
+
+For local development without JWT setup:
+
+```bash
+Auth__DisableAuth=true dotnet run --project src/Guardrail.API
+```
+
+No cloud credentials are required for the heuristic fallbacks.
 
 ### Evaluate a prompt via API
 
@@ -196,6 +213,35 @@ Response:
   "rationale": "overall=92; injection=92; decision=Block"
 }
 ```
+
+---
+
+## Connect From Other Agents
+
+This repository now exposes three integration surfaces:
+
+| Surface | Endpoint | Best for |
+|---|---|---|
+| REST guardrail API | `/api/guardrail/evaluate-input`, `/evaluate-output`, `/evaluate-full` | Custom apps that want explicit pre/post model checks |
+| MCP server | `/mcp` | Claude-style agent/tool ecosystems that can talk JSON-RPC MCP |
+| OpenAI-style proxy | `/v1/chat/completions` | Internal apps/frameworks that already target OpenAI-compatible chat APIs |
+
+### MCP tools exposed by `/mcp`
+
+- `guardrail.evaluate_input`
+- `guardrail.evaluate_output`
+- `guardrail.evaluate_full`
+- `guardrail.get_tool_registry`
+- `guardrail.get_manifest`
+
+### Discovery
+
+Use either:
+
+- `GET /.well-known/ai-guardrail.json`
+- `GET /api/integrations/manifest`
+
+Both describe the available protocols, auth expectations, and integration endpoints.
 
 ---
 
@@ -229,25 +275,24 @@ This is Phase 1 (heuristic + pattern-based). The [implementation plan](docs/impl
 ## Project Structure
 
 ```
-app/
-  main.py           # FastAPI app, all routes
-  config.py         # Pydantic settings (env vars)
-  database.py       # SQLAlchemy models (PolicyProfile, AuditEvent)
-  providers.py      # ContentSafetyProvider + PromptShieldProvider
-  risk_engine.py    # Weighted risk scoring (6 dimensions)
-  policy_engine.py  # Multi-tenant policy resolution
-  hf_client.py      # HuggingFace inference via httpx
-  seed.py           # Database seeding from JSON policy files
-evaluations/
-  datasets/         # 48-case red-team test suite
-policies/
-  samples/          # 5 seeded policy JSON files
 src/
-  Guardrail.API/wwwroot/  # Demo UI + Admin UI (static HTML)
+  Guardrail.API/            # ASP.NET host, controllers, static demo/admin UI
+  Guardrail.Application/    # Commands, validators, MediatR behaviors
+  Guardrail.Core/           # Domain entities, abstractions, value objects
+  Guardrail.Infrastructure/ # EF Core, policy engine, firewalls, providers
+tests/
+  Guardrail.UnitTests/
+  Guardrail.IntegrationTests/
+evaluations/
+  datasets/                # Seeded regression and red-team datasets
+policies/
+  samples/                 # Sample tenant/application/global policies
+app/
+  ...                      # Legacy Python prototype retained for reference only
 docs/
   architecture.md
   implementation-plan.md
-  guardrail-examples.md   # Positive/negative examples per guardrail type
+  guardrail-examples.md
 ```
 
 ---
@@ -255,10 +300,10 @@ docs/
 ## Contributing
 
 PRs welcome. Areas most useful right now:
-- LlamaGuard integration (Phase 1 of the roadmap) — replace heuristics with `meta-llama/LlamaGuard-3-8B`
-- More heuristic patterns and test cases in `evaluations/datasets/`
-- LangChain / LlamaIndex middleware wrapper
-- SDK clients for other languages (TypeScript, Java)
+- More regression datasets in `evaluations/datasets/`
+- SDKs and thin adapters for TypeScript, Python, and Java
+- Additional MCP resources/prompts beyond the current tool surface
+- More provider adapters beyond Azure + HuggingFace
 
 ---
 
