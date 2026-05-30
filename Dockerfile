@@ -20,6 +20,8 @@ COPY policies /app/policies
 COPY evaluations /app/evaluations
 
 ENV ASPNETCORE_URLS=http://+:7860
+ENV Guardrail__UseSqlite=true
+ENV Auth__DisableAuth=true
 ENV Guardrail__PolicySeedPath=/app/policies/samples
 ENV Guardrail__EvaluationSeedPath=/app/evaluations/datasets
 

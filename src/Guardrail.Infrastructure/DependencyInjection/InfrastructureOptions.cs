@@ -2,6 +2,7 @@ namespace Guardrail.Infrastructure.DependencyInjection;
 
 public sealed class GuardrailPlatformOptions
 {
+    public bool UseSqlite { get; set; }
     public bool SeedDataOnStartup { get; set; } = true;
     public bool ApplyDatabaseOnStartup { get; set; } = true;
     public int PolicyCacheMinutes { get; set; } = 15;

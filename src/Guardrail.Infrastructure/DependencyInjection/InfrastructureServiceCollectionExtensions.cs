@@ -23,12 +23,14 @@ public static class InfrastructureServiceCollectionExtensions
         services.Configure<AzureContentSafetyOptions>(configuration.GetSection("Providers:AzureContentSafety"));
         services.Configure<AzurePromptShieldOptions>(configuration.GetSection("Providers:AzurePromptShield"));
 
+        var guardrailOptions = configuration.GetSection("Guardrail").Get<GuardrailPlatformOptions>() ?? new();
         var pgConnectionString = configuration.GetConnectionString("PostgreSql")
             ?? configuration.GetConnectionString("DefaultConnection");
 
         // Use SQLite when no real PostgreSQL connection string is provided.
         // This enables zero-dependency demo mode (HF Spaces, local dev without Docker).
-        var useSqlite = string.IsNullOrWhiteSpace(pgConnectionString)
+        var useSqlite = guardrailOptions.UseSqlite
+            || string.IsNullOrWhiteSpace(pgConnectionString)
             || !pgConnectionString.Contains("Host=", StringComparison.OrdinalIgnoreCase)
                && !pgConnectionString.Contains("postgresql://", StringComparison.OrdinalIgnoreCase)
                && !pgConnectionString.Contains("postgres://", StringComparison.OrdinalIgnoreCase);
