@@ -20,7 +20,6 @@ public class DemoChatController : ControllerBase
 
     private static readonly Dictionary<string, Guid> AppIds = new()
     {
-        ["plain-language"] = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0001"),
         ["enterprise-copilot"] = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0002"),
         ["healthcare"] = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0003"),
         ["developer"] = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0004"),
@@ -28,7 +27,6 @@ public class DemoChatController : ControllerBase
 
     private static readonly Dictionary<string, string> SystemPrompts = new()
     {
-        ["plain-language"]    = "You are a plain language summarization assistant. Explain things simply and clearly.",
         ["enterprise-copilot"] = "You are an enterprise assistant. Be professional, concise, and accurate.",
         ["healthcare"]        = "You are a healthcare information assistant. Always recommend consulting a licensed physician.",
         ["developer"]         = "You are a developer assistant. Help with code, architecture, and technical questions.",
@@ -53,9 +51,17 @@ public class DemoChatController : ControllerBase
         [FromBody] DemoChatRequest request,
         CancellationToken ct)
     {
-        var appKey = request.AppType ?? "plain-language";
-        if (!AppIds.TryGetValue(appKey, out var appId))
-            appId = AppIds["plain-language"];
+        var appKey = request.AppType ?? "enterprise-copilot";
+        Guid appId;
+        if (request.ApplicationId.HasValue && request.ApplicationId.Value != Guid.Empty)
+        {
+            appId = request.ApplicationId.Value;
+        }
+        else if (!AppIds.TryGetValue(appKey, out appId))
+        {
+            appKey = "enterprise-copilot";
+            appId = AppIds[appKey];
+        }
 
         var tenantCtx = new TenantContext
         {
@@ -147,8 +153,10 @@ public class DemoChatController : ControllerBase
 public class DemoChatRequest
 {
     public string Prompt  { get; set; } = string.Empty;
-    /// <summary>plain-language | enterprise-copilot | healthcare | developer</summary>
+    /// <summary>enterprise-copilot | healthcare | developer</summary>
     public string? AppType { get; set; }
+    /// <summary>Optional application ID override for testing newly created policies.</summary>
+    public Guid? ApplicationId { get; set; }
 }
 
 public class DemoChatResponse

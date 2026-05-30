@@ -96,6 +96,12 @@
       cursor: pointer; transition: all 0.15s;
     }
     .example-btn:hover { background: #4a5568; color: #e2e8f0; }
+    .help-box {
+      margin-top: 8px; padding: 10px 12px; background: #0f1117;
+      border: 1px solid #2d3748; border-radius: 8px;
+      font-size: 11px; color: #718096; line-height: 1.55;
+    }
+    .help-box strong { color: #a0aec0; }
 
     .run-btn {
       width: 100%; margin-top: 18px; padding: 12px;
@@ -277,11 +283,25 @@
 
       <label>Application / Policy Context</label>
       <select id="appType">
-        <option value="plain-language">Plain Language Summary</option>
         <option value="enterprise-copilot">Enterprise Copilot</option>
         <option value="healthcare">Regulated Healthcare</option>
         <option value="developer">Internal Developer Assistant</option>
+        <option value="custom">Custom application ID...</option>
       </select>
+      <input
+        type="text"
+        id="customAppId"
+        placeholder="Paste the Application ID from Policy Admin"
+        style="display:none;width:100%;margin-top:8px;background:#0f1117;border:1px solid #2d3748;border-radius:8px;color:#e2e8f0;font-size:13px;padding:9px 12px;outline:none;font-family:inherit;"
+      />
+      <div class="help-box">
+        <strong>How this maps to policies:</strong><br>
+        The demo sends a fixed Tenant ID plus the selected Application ID. A new policy affects this chat when its Application ID matches the selected demo context. For a new policy with a different app ID, choose Custom application ID and paste that ID here.
+        <br><br>
+        <strong>Enterprise Copilot:</strong> <code>bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0002</code><br>
+        <strong>Regulated Healthcare:</strong> <code>bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0003</code><br>
+        <strong>Internal Developer Assistant:</strong> <code>bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0004</code>
+      </div>
 
       <label>User prompt</label>
       <textarea id="promptInput" placeholder="Type a message or pick an example below…"></textarea>
@@ -343,6 +363,11 @@
     btn.addEventListener('click', () => {
       document.getElementById('promptInput').value = btn.dataset.prompt;
     });
+  });
+
+  document.getElementById('appType').addEventListener('change', () => {
+    const isCustom = document.getElementById('appType').value === 'custom';
+    document.getElementById('customAppId').style.display = isCustom ? 'block' : 'none';
   });
 
   function riskColor(score) {
@@ -469,6 +494,17 @@
     if (!prompt) return;
 
     const appType = document.getElementById('appType').value;
+    const applicationId = appType === 'custom'
+      ? document.getElementById('customAppId').value.trim()
+      : null;
+
+    if (appType === 'custom' && !applicationId) {
+      document.getElementById('pipelinePanel').innerHTML = `
+        <div style="padding:20px;background:#742a2a;border:1px solid #9b2c2c;border-radius:10px;color:#fc8181;font-size:13px">
+          ⚠️ Enter the Application ID from Policy Admin before running a custom policy.
+        </div>`;
+      return;
+    }
     const btn = document.getElementById('runBtn');
     btn.disabled = true;
     btn.textContent = 'Running…';
@@ -502,7 +538,7 @@
       const res = await fetch('/api/demo/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, appType })
+        body: JSON.stringify({ prompt, appType, applicationId })
       });
 
       if (!res.ok) {
