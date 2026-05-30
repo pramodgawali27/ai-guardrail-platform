@@ -28,6 +28,8 @@ public sealed class ManifestController : ControllerBase
                 rest = new
                 {
                     evaluateInput = $"{baseUri}/api/guardrail/evaluate-input",
+                    evaluateContext = $"{baseUri}/api/guardrail/evaluate-context",
+                    evaluateToolCall = $"{baseUri}/api/guardrail/evaluate-tool-call",
                     evaluateOutput = $"{baseUri}/api/guardrail/evaluate-output",
                     evaluateFull = $"{baseUri}/api/guardrail/evaluate-full",
                     toolRegistry = $"{baseUri}/api/tools/registry",
@@ -41,6 +43,8 @@ public sealed class ManifestController : ControllerBase
                     tools = new[]
                     {
                         "guardrail.evaluate_input",
+                        "guardrail.evaluate_context",
+                        "guardrail.evaluate_tool_call",
                         "guardrail.evaluate_output",
                         "guardrail.evaluate_full",
                         "guardrail.get_tool_registry",

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Guardrail.Application.Queries.GetPolicy;
 using Guardrail.Core.Abstractions;
+using Guardrail.Core.Domain.ValueObjects;
 using Guardrail.API.Models;
 
 namespace Guardrail.API.Controllers;
@@ -19,15 +20,18 @@ public sealed class PoliciesController : ControllerBase
 {
     private readonly IMediator _mediator;
     private readonly IPolicyRepository _policyRepository;
+    private readonly IGuardrailOrchestrator _orchestrator;
     private readonly ILogger<PoliciesController> _logger;
 
     public PoliciesController(
         IMediator mediator,
         IPolicyRepository policyRepository,
+        IGuardrailOrchestrator orchestrator,
         ILogger<PoliciesController> logger)
     {
         _mediator = mediator;
         _policyRepository = policyRepository;
+        _orchestrator = orchestrator;
         _logger = logger;
     }
 
@@ -135,6 +139,109 @@ public sealed class PoliciesController : ControllerBase
             new { id = profile.Id, name = request.Name, version = profile.Version });
     }
 
+    // ── POST /api/policies/dry-run ───────────────────────────────────────────
+
+    /// <summary>
+    /// Simulate guardrail behavior without writing audit, review, risk, or redaction rows.
+    /// </summary>
+    /// <remarks>
+    /// This endpoint evaluates the currently effective policy for the supplied tenant
+    /// and application. Use it from the admin UI before promoting policy changes and
+    /// from CI/CD to validate prompts, contexts, outputs, and proposed tool calls.
+    /// </remarks>
+    [HttpPost("dry-run")]
+    [Authorize("AdminPolicy")]
+    [ProducesResponseType(typeof(GuardrailEvaluationResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<GuardrailEvaluationResult>> DryRun(
+        [FromBody] GuardrailDryRunApiRequest request,
+        CancellationToken cancellationToken)
+    {
+        var tenantContext = ExtractTenantContext(request.CorrelationId);
+        var dataSources = ToSourceDescriptors(request.DataSources);
+        var requestedTools = ToToolCallDescriptors(request.RequestedTools);
+        var metadata = request.Metadata ?? new();
+
+        if (!string.IsNullOrWhiteSpace(request.UserPrompt) && !string.IsNullOrWhiteSpace(request.ModelOutput))
+        {
+            return Ok(await _orchestrator.EvaluateFullAsync(
+                new FullEvaluationRequest
+                {
+                    TenantContext = tenantContext,
+                    UserPrompt = request.UserPrompt,
+                    SystemPrompt = request.SystemPrompt,
+                    ModelOutput = request.ModelOutput,
+                    DataSources = dataSources,
+                    RequestedTools = requestedTools,
+                    OutputSchemaJson = request.OutputSchemaJson,
+                    Metadata = metadata,
+                    PersistAudit = false
+                },
+                cancellationToken));
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.UserPrompt))
+        {
+            return Ok(await _orchestrator.EvaluateInputAsync(
+                new InputEvaluationRequest
+                {
+                    TenantContext = tenantContext,
+                    UserPrompt = request.UserPrompt,
+                    SystemPrompt = request.SystemPrompt,
+                    DataSources = dataSources,
+                    RequestedTools = requestedTools,
+                    Metadata = metadata,
+                    PersistAudit = false
+                },
+                cancellationToken));
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.ModelOutput))
+        {
+            return Ok(await _orchestrator.EvaluateOutputAsync(
+                new OutputEvaluationRequest
+                {
+                    TenantContext = tenantContext,
+                    ModelOutput = request.ModelOutput,
+                    OutputSchemaJson = request.OutputSchemaJson,
+                    Metadata = metadata,
+                    PersistAudit = false
+                },
+                cancellationToken));
+        }
+
+        if (requestedTools.Count > 0)
+        {
+            return Ok(await _orchestrator.EvaluateToolCallAsync(
+                new ToolCallEvaluationRequest
+                {
+                    TenantContext = tenantContext,
+                    RequestedTools = requestedTools,
+                    Metadata = metadata,
+                    PersistAudit = false
+                },
+                cancellationToken));
+        }
+
+        if (dataSources.Count > 0)
+        {
+            return Ok(await _orchestrator.EvaluateContextAsync(
+                new ContextEvaluationRequest
+                {
+                    TenantContext = tenantContext,
+                    DataSources = dataSources,
+                    Metadata = metadata,
+                    PersistAudit = false
+                },
+                cancellationToken));
+        }
+
+        return BadRequest(new { error = "Dry run requires at least one of userPrompt, modelOutput, requestedTools, or dataSources." });
+    }
+
     // ── PUT /api/policies/{id} ────────────────────────────────────────────────
 
     /// <summary>
@@ -226,4 +333,56 @@ public sealed class PoliciesController : ControllerBase
 
         return Core.Domain.Enums.PolicyScope.Global;
     }
+
+    private TenantContext ExtractTenantContext(string? correlationId)
+    {
+        var tenantIdStr = Request.Headers["X-Tenant-Id"].ToString();
+        var appIdStr = Request.Headers["X-Application-Id"].ToString();
+        var sessionId = Request.Headers["X-Session-Id"].ToString();
+
+        var userId = User.FindFirst("sub")?.Value
+            ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+            ?? User.Identity?.Name
+            ?? "admin";
+
+        if (!Guid.TryParse(tenantIdStr, out var tenantId))
+            throw new ArgumentException(
+                $"Header 'X-Tenant-Id' is missing or is not a valid GUID (received: '{tenantIdStr}').");
+
+        if (!Guid.TryParse(appIdStr, out var appId))
+            throw new ArgumentException(
+                $"Header 'X-Application-Id' is missing or is not a valid GUID (received: '{appIdStr}').");
+
+        return new TenantContext
+        {
+            TenantId = tenantId,
+            ApplicationId = appId,
+            UserId = userId,
+            SessionId = string.IsNullOrWhiteSpace(sessionId) ? Guid.NewGuid().ToString("N") : sessionId,
+            CorrelationId = correlationId ?? HttpContext.TraceIdentifier,
+            Environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "production"
+        };
+    }
+
+    private static List<SourceDescriptor> ToSourceDescriptors(List<SourceDescriptorApiModel>? dataSources)
+        => dataSources?
+            .Select(s => new SourceDescriptor
+            {
+                SourceId = s.SourceId,
+                SourceType = s.SourceType,
+                TenantId = s.TenantId,
+                TrustLevel = s.TrustLevel,
+                Uri = s.Uri,
+                Metadata = s.Metadata ?? new()
+            }).ToList() ?? new();
+
+    private static List<ToolCallDescriptor> ToToolCallDescriptors(List<ToolCallApiModel>? requestedTools)
+        => requestedTools?
+            .Select(t => new ToolCallDescriptor
+            {
+                ToolName = t.ToolName,
+                Parameters = t.Parameters?
+                    .ToDictionary(kvp => kvp.Key, kvp => (object)kvp.Value)
+                    ?? new()
+            }).ToList() ?? new();
 }

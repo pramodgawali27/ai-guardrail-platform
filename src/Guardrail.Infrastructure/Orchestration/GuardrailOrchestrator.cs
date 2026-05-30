@@ -80,7 +80,8 @@ public sealed class GuardrailOrchestrator : IGuardrailOrchestrator
             policy.ProfileId,
             request.TenantContext.UserId);
 
-        await _auditRepository.AddExecutionAsync(execution, cancellationToken);
+        if (request.PersistAudit)
+            await _auditRepository.AddExecutionAsync(execution, cancellationToken);
 
         var contentSafetyResult = await _contentSafetyProvider.AnalyzeTextAsync(
             $"{request.SystemPrompt}{Environment.NewLine}{request.UserPrompt}",
@@ -135,25 +136,30 @@ public sealed class GuardrailOrchestrator : IGuardrailOrchestrator
 
         stopwatch.Stop();
         execution.Complete(riskEvaluation.Score.Level, null, riskEvaluation.Decision, stopwatch.ElapsedMilliseconds, request.TenantContext.UserId);
-        await _auditRepository.UpdateExecutionAsync(execution, cancellationToken);
+        if (request.PersistAudit)
+            await _auditRepository.UpdateExecutionAsync(execution, cancellationToken);
 
-        var assessment = await PersistAssessmentAsync(execution.Id, request.TenantContext.UserId, riskEvaluation, cancellationToken);
-        await PersistSignalsAsync(assessment.Id, contentSafetyResult, promptShieldResult, policyEvaluation, null, cancellationToken);
-        var reviewCaseId = await CreateReviewCaseIfRequiredAsync(
-            execution,
-            request.TenantContext,
-            riskEvaluation,
-            BuildSafeSummary("input", request.UserPrompt, request.DataSources.Count, request.RequestedTools.Count),
-            cancellationToken);
+        Guid? reviewCaseId = null;
+        if (request.PersistAudit)
+        {
+            var assessment = await PersistAssessmentAsync(execution.Id, request.TenantContext.UserId, riskEvaluation, cancellationToken);
+            await PersistSignalsAsync(assessment.Id, contentSafetyResult, promptShieldResult, policyEvaluation, null, cancellationToken);
+            reviewCaseId = await CreateReviewCaseIfRequiredAsync(
+                execution,
+                request.TenantContext,
+                riskEvaluation,
+                BuildSafeSummary("input", request.UserPrompt, request.DataSources.Count, request.RequestedTools.Count),
+                cancellationToken);
 
-        await PersistAuditEventAsync(
-            execution.Id,
-            request.TenantContext,
-            "InputEvaluated",
-            "Input",
-            riskEvaluation,
-            BuildSafeSummary("input", request.UserPrompt, request.DataSources.Count, request.RequestedTools.Count),
-            cancellationToken);
+            await PersistAuditEventAsync(
+                execution.Id,
+                request.TenantContext,
+                "InputEvaluated",
+                "Input",
+                riskEvaluation,
+                BuildSafeSummary("input", request.UserPrompt, request.DataSources.Count, request.RequestedTools.Count),
+                cancellationToken);
+        }
 
         _metrics.RecordEvaluation("input", riskEvaluation.Decision, riskEvaluation.Score.NormalizedScore, stopwatch.ElapsedMilliseconds);
 
@@ -170,7 +176,7 @@ public sealed class GuardrailOrchestrator : IGuardrailOrchestrator
             HumanReviewCaseId = reviewCaseId,
             AppliedPolicies = [policy.ProfileName],
             DetectedSignals = riskEvaluation.AppliedSignals,
-            Metadata = BuildMetadata(policy, contentSafetyResult.ProviderName, _promptShieldProvider.ProviderName),
+            Metadata = BuildMetadata(policy, contentSafetyResult.ProviderName, _promptShieldProvider.ProviderName, !request.PersistAudit),
             EvaluatedAt = DateTimeOffset.UtcNow,
             DurationMs = stopwatch.ElapsedMilliseconds
         };
@@ -197,7 +203,8 @@ public sealed class GuardrailOrchestrator : IGuardrailOrchestrator
                 Sha256Hasher.Hash(request.ModelOutput),
                 policy.ProfileId,
                 request.TenantContext.UserId);
-            await _auditRepository.AddExecutionAsync(execution, cancellationToken);
+            if (request.PersistAudit)
+                await _auditRepository.AddExecutionAsync(execution, cancellationToken);
         }
 
         var effectiveConstraints = request.AppliedConstraints.HasActiveConstraints
@@ -251,12 +258,18 @@ public sealed class GuardrailOrchestrator : IGuardrailOrchestrator
 
         stopwatch.Stop();
         execution.Complete(execution.InputRiskLevel, riskEvaluation.Score.Level, riskEvaluation.Decision, stopwatch.ElapsedMilliseconds, request.TenantContext.UserId);
-        await _auditRepository.UpdateExecutionAsync(execution, cancellationToken);
+        if (request.PersistAudit)
+            await _auditRepository.UpdateExecutionAsync(execution, cancellationToken);
 
-        var assessment = await PersistAssessmentAsync(execution.Id, request.TenantContext.UserId, riskEvaluation, cancellationToken);
-        await PersistSignalsAsync(assessment.Id, contentSafetyResult, null, policyEvaluation, outputValidation, cancellationToken);
+        if (request.PersistAudit)
+        {
+            var assessment = await PersistAssessmentAsync(execution.Id, request.TenantContext.UserId, riskEvaluation, cancellationToken);
+            await PersistSignalsAsync(assessment.Id, contentSafetyResult, null, policyEvaluation, outputValidation, cancellationToken);
+        }
 
-        if (outputValidation.RequiresRedaction && !string.IsNullOrWhiteSpace(outputValidation.RedactedOutput))
+        if (request.PersistAudit &&
+            outputValidation.RequiresRedaction &&
+            !string.IsNullOrWhiteSpace(outputValidation.RedactedOutput))
         {
             var redactionResult = RedactionResult.Create(
                 execution.Id,
@@ -271,21 +284,25 @@ public sealed class GuardrailOrchestrator : IGuardrailOrchestrator
             await _dbContext.SaveChangesAsync(cancellationToken);
         }
 
-        var reviewCaseId = await CreateReviewCaseIfRequiredAsync(
-            execution,
-            request.TenantContext,
-            riskEvaluation,
-            BuildSafeSummary("output", request.ModelOutput, 0, 0),
-            cancellationToken);
+        Guid? reviewCaseId = null;
+        if (request.PersistAudit)
+        {
+            reviewCaseId = await CreateReviewCaseIfRequiredAsync(
+                execution,
+                request.TenantContext,
+                riskEvaluation,
+                BuildSafeSummary("output", request.ModelOutput, 0, 0),
+                cancellationToken);
 
-        await PersistAuditEventAsync(
-            execution.Id,
-            request.TenantContext,
-            "OutputEvaluated",
-            "Output",
-            riskEvaluation,
-            BuildSafeSummary("output", request.ModelOutput, 0, 0),
-            cancellationToken);
+            await PersistAuditEventAsync(
+                execution.Id,
+                request.TenantContext,
+                "OutputEvaluated",
+                "Output",
+                riskEvaluation,
+                BuildSafeSummary("output", request.ModelOutput, 0, 0),
+                cancellationToken);
+        }
 
         _metrics.RecordEvaluation(
             "output",
@@ -308,7 +325,7 @@ public sealed class GuardrailOrchestrator : IGuardrailOrchestrator
             AppliedPolicies = [policy.ProfileName],
             DetectedSignals = riskEvaluation.AppliedSignals,
             RedactedOutput = outputValidation.RedactedOutput,
-            Metadata = BuildMetadata(policy, contentSafetyResult.ProviderName, null),
+            Metadata = BuildMetadata(policy, contentSafetyResult.ProviderName, null, !request.PersistAudit),
             EvaluatedAt = DateTimeOffset.UtcNow,
             DurationMs = stopwatch.ElapsedMilliseconds
         };
@@ -326,7 +343,8 @@ public sealed class GuardrailOrchestrator : IGuardrailOrchestrator
                 SystemPrompt = request.SystemPrompt,
                 DataSources = request.DataSources,
                 RequestedTools = request.RequestedTools,
-                Metadata = request.Metadata
+                Metadata = request.Metadata,
+                PersistAudit = request.PersistAudit
             },
             cancellationToken);
 
@@ -341,9 +359,166 @@ public sealed class GuardrailOrchestrator : IGuardrailOrchestrator
                 ModelOutput = request.ModelOutput,
                 OutputSchemaJson = request.OutputSchemaJson,
                 AppliedConstraints = inputResult.AppliedConstraints,
-                Metadata = request.Metadata
+                Metadata = request.Metadata,
+                PersistAudit = request.PersistAudit
             },
             cancellationToken);
+    }
+
+    public async Task<GuardrailEvaluationResult> EvaluateContextAsync(
+        ContextEvaluationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var policy = await _policyEngine.ResolveEffectivePolicyAsync(request.TenantContext, cancellationToken);
+        var execution = GuardrailExecution.Create(
+            request.TenantContext.TenantId,
+            request.TenantContext.ApplicationId,
+            request.TenantContext.UserId,
+            request.TenantContext.SessionId,
+            request.TenantContext.CorrelationId,
+            Sha256Hasher.Hash(JsonSerializer.Serialize(request.DataSources.Select(x => new { x.SourceId, x.SourceType, x.TenantId, x.Uri }), JsonOptions)),
+            policy.ProfileId,
+            request.TenantContext.UserId);
+
+        if (request.PersistAudit)
+            await _auditRepository.AddExecutionAsync(execution, cancellationToken);
+
+        var contextValidation = await _contextFirewall.ValidateContextAsync(
+            new ContextFirewallRequest
+            {
+                TenantContext = request.TenantContext,
+                RequestedSources = request.DataSources,
+                BoundaryConfig = policy.DataBoundary
+            },
+            cancellationToken);
+
+        var riskEvaluation = await _riskEngine.EvaluateRiskAsync(
+            BuildRiskInput(request.TenantContext, policy, null, null, null, null, contextValidation, null),
+            cancellationToken);
+
+        stopwatch.Stop();
+        execution.Complete(riskEvaluation.Score.Level, null, riskEvaluation.Decision, stopwatch.ElapsedMilliseconds, request.TenantContext.UserId);
+
+        Guid? reviewCaseId = null;
+        if (request.PersistAudit)
+        {
+            await _auditRepository.UpdateExecutionAsync(execution, cancellationToken);
+            var assessment = await PersistAssessmentAsync(execution.Id, request.TenantContext.UserId, riskEvaluation, cancellationToken);
+            await PersistSignalsAsync(assessment.Id, null, null, null, null, cancellationToken);
+            reviewCaseId = await CreateReviewCaseIfRequiredAsync(
+                execution,
+                request.TenantContext,
+                riskEvaluation,
+                BuildSafeSummary("context", string.Empty, request.DataSources.Count, 0),
+                cancellationToken);
+            await PersistAuditEventAsync(
+                execution.Id,
+                request.TenantContext,
+                "ContextEvaluated",
+                "Context",
+                riskEvaluation,
+                BuildSafeSummary("context", string.Empty, request.DataSources.Count, 0),
+                cancellationToken);
+        }
+
+        _metrics.RecordEvaluation("context", riskEvaluation.Decision, riskEvaluation.Score.NormalizedScore, stopwatch.ElapsedMilliseconds);
+
+        return new GuardrailEvaluationResult
+        {
+            ExecutionId = execution.Id,
+            CorrelationId = request.TenantContext.CorrelationId,
+            Decision = riskEvaluation.Decision,
+            RiskLevel = riskEvaluation.Score.Level,
+            NormalizedRiskScore = riskEvaluation.Score.NormalizedScore,
+            Rationale = riskEvaluation.Rationale,
+            AppliedConstraints = riskEvaluation.RecommendedConstraints,
+            RequiresHumanReview = riskEvaluation.RequiresHumanReview,
+            HumanReviewCaseId = reviewCaseId,
+            AppliedPolicies = [policy.ProfileName],
+            DetectedSignals = BuildContextSignals(contextValidation),
+            Metadata = BuildMetadata(policy, "not-applicable", null, !request.PersistAudit),
+            EvaluatedAt = DateTimeOffset.UtcNow,
+            DurationMs = stopwatch.ElapsedMilliseconds
+        };
+    }
+
+    public async Task<GuardrailEvaluationResult> EvaluateToolCallAsync(
+        ToolCallEvaluationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var policy = await _policyEngine.ResolveEffectivePolicyAsync(request.TenantContext, cancellationToken);
+        var execution = GuardrailExecution.Create(
+            request.TenantContext.TenantId,
+            request.TenantContext.ApplicationId,
+            request.TenantContext.UserId,
+            request.TenantContext.SessionId,
+            request.TenantContext.CorrelationId,
+            Sha256Hasher.Hash(JsonSerializer.Serialize(request.RequestedTools.Select(x => new { x.ToolName, x.ToolVersion }), JsonOptions)),
+            policy.ProfileId,
+            request.TenantContext.UserId);
+
+        if (request.PersistAudit)
+            await _auditRepository.AddExecutionAsync(execution, cancellationToken);
+
+        var toolValidation = await _toolFirewall.ValidateToolsAsync(
+            new ToolValidationRequest
+            {
+                TenantContext = request.TenantContext,
+                RequestedTools = request.RequestedTools,
+                Policy = policy
+            },
+            cancellationToken);
+
+        var riskEvaluation = await _riskEngine.EvaluateRiskAsync(
+            BuildRiskInput(request.TenantContext, policy, null, null, null, toolValidation, null, null),
+            cancellationToken);
+
+        stopwatch.Stop();
+        execution.Complete(riskEvaluation.Score.Level, null, riskEvaluation.Decision, stopwatch.ElapsedMilliseconds, request.TenantContext.UserId);
+
+        Guid? reviewCaseId = null;
+        if (request.PersistAudit)
+        {
+            await _auditRepository.UpdateExecutionAsync(execution, cancellationToken);
+            var assessment = await PersistAssessmentAsync(execution.Id, request.TenantContext.UserId, riskEvaluation, cancellationToken);
+            await PersistSignalsAsync(assessment.Id, null, null, null, null, cancellationToken);
+            reviewCaseId = await CreateReviewCaseIfRequiredAsync(
+                execution,
+                request.TenantContext,
+                riskEvaluation,
+                BuildSafeSummary("tool", string.Empty, 0, request.RequestedTools.Count),
+                cancellationToken);
+            await PersistAuditEventAsync(
+                execution.Id,
+                request.TenantContext,
+                "ToolCallEvaluated",
+                "Tool",
+                riskEvaluation,
+                BuildSafeSummary("tool", string.Empty, 0, request.RequestedTools.Count),
+                cancellationToken);
+        }
+
+        _metrics.RecordEvaluation("tool", riskEvaluation.Decision, riskEvaluation.Score.NormalizedScore, stopwatch.ElapsedMilliseconds);
+
+        return new GuardrailEvaluationResult
+        {
+            ExecutionId = execution.Id,
+            CorrelationId = request.TenantContext.CorrelationId,
+            Decision = riskEvaluation.Decision,
+            RiskLevel = riskEvaluation.Score.Level,
+            NormalizedRiskScore = riskEvaluation.Score.NormalizedScore,
+            Rationale = riskEvaluation.Rationale,
+            AppliedConstraints = riskEvaluation.RecommendedConstraints,
+            RequiresHumanReview = riskEvaluation.RequiresHumanReview,
+            HumanReviewCaseId = reviewCaseId,
+            AppliedPolicies = [policy.ProfileName],
+            DetectedSignals = BuildToolSignals(toolValidation),
+            Metadata = BuildMetadata(policy, "not-applicable", null, !request.PersistAudit),
+            EvaluatedAt = DateTimeOffset.UtcNow,
+            DurationMs = stopwatch.ElapsedMilliseconds
+        };
     }
 
     private static string ComputeInputHash(InputEvaluationRequest request)
@@ -559,13 +734,35 @@ public sealed class GuardrailOrchestrator : IGuardrailOrchestrator
             },
             JsonOptions);
 
-    private static Dictionary<string, object> BuildMetadata(EffectivePolicy policy, string contentSafetyProvider, string? promptShieldProvider)
+    private static List<string> BuildContextSignals(ContextFirewallResult contextValidation)
+    {
+        var signals = new List<string>();
+        signals.AddRange(contextValidation.BlockedSources.Select(x => $"context-blocked:{x}"));
+        if (contextValidation.CrossTenantAttemptDetected)
+            signals.Add("context-cross-tenant:1.00");
+        return signals;
+    }
+
+    private static List<string> BuildToolSignals(ToolValidationResult toolValidation)
+    {
+        var signals = new List<string>();
+        signals.AddRange(toolValidation.DeniedTools.Select(x => $"tool-denied:{x}"));
+        signals.AddRange(toolValidation.ApprovalRequiredTools.Select(x => $"tool-approval-required:{x}"));
+        return signals;
+    }
+
+    private static Dictionary<string, object> BuildMetadata(
+        EffectivePolicy policy,
+        string contentSafetyProvider,
+        string? promptShieldProvider,
+        bool dryRun = false)
     {
         var metadata = new Dictionary<string, object>
         {
             ["policyProfile"] = policy.ProfileName,
             ["policyVersion"] = policy.Version,
-            ["contentSafetyProvider"] = contentSafetyProvider
+            ["contentSafetyProvider"] = contentSafetyProvider,
+            ["dryRun"] = dryRun
         };
 
         if (!string.IsNullOrWhiteSpace(promptShieldProvider))

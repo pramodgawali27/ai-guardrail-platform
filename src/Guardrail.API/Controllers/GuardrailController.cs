@@ -22,11 +22,16 @@ namespace Guardrail.API.Controllers;
 public sealed class GuardrailController : ControllerBase
 {
     private readonly IMediator _mediator;
+    private readonly IGuardrailOrchestrator _orchestrator;
     private readonly ILogger<GuardrailController> _logger;
 
-    public GuardrailController(IMediator mediator, ILogger<GuardrailController> logger)
+    public GuardrailController(
+        IMediator mediator,
+        IGuardrailOrchestrator orchestrator,
+        ILogger<GuardrailController> logger)
     {
         _mediator = mediator;
+        _orchestrator = orchestrator;
         _logger = logger;
     }
 
@@ -85,6 +90,73 @@ public sealed class GuardrailController : ControllerBase
         };
 
         var result = await _mediator.Send(command, cancellationToken);
+        return Ok(result);
+    }
+
+    // ── POST /api/guardrail/evaluate-context ─────────────────────────────────
+
+    /// <summary>
+    /// Evaluate retrieved context before it is inserted into an AI prompt.
+    /// </summary>
+    /// <remarks>
+    /// Use this endpoint when protecting RAG systems, database MCP servers,
+    /// SharePoint/Office 365 MCP servers, Atlassian MCP servers, web fetchers, or
+    /// any connector that returns documents to an agent.
+    /// </remarks>
+    [HttpPost("evaluate-context")]
+    [ProducesResponseType(typeof(GuardrailEvaluationResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<GuardrailEvaluationResult>> EvaluateContext(
+        [FromBody] EvaluateContextApiRequest request,
+        CancellationToken cancellationToken)
+    {
+        var tenantContext = ExtractTenantContext(request.CorrelationId);
+        var result = await _orchestrator.EvaluateContextAsync(
+            new ContextEvaluationRequest
+            {
+                TenantContext = tenantContext,
+                DataSources = ToSourceDescriptors(request.DataSources),
+                Metadata = request.Metadata ?? new()
+            },
+            cancellationToken);
+
+        return Ok(result);
+    }
+
+    // ── POST /api/guardrail/evaluate-tool-call ───────────────────────────────
+
+    /// <summary>
+    /// Evaluate proposed tool calls before an agent executes them.
+    /// </summary>
+    /// <remarks>
+    /// Use this endpoint as the policy gate in front of MCP tools, database writes,
+    /// email sends, ticket updates, file exports, shell commands, and other actions.
+    /// </remarks>
+    [HttpPost("evaluate-tool-call")]
+    [ProducesResponseType(typeof(GuardrailEvaluationResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<GuardrailEvaluationResult>> EvaluateToolCall(
+        [FromBody] EvaluateToolCallApiRequest request,
+        CancellationToken cancellationToken)
+    {
+        var tenantContext = ExtractTenantContext(request.CorrelationId);
+        var result = await _orchestrator.EvaluateToolCallAsync(
+            new ToolCallEvaluationRequest
+            {
+                TenantContext = tenantContext,
+                RequestedTools = ToToolCallDescriptors(request.RequestedTools),
+                Metadata = request.Metadata ?? new()
+            },
+            cancellationToken);
+
         return Ok(result);
     }
 
@@ -161,24 +233,8 @@ public sealed class GuardrailController : ControllerBase
             UserPrompt = request.UserPrompt,
             SystemPrompt = request.SystemPrompt,
             ModelOutput = request.ModelOutput,
-            DataSources = request.DataSources?
-                .Select(s => new SourceDescriptor
-                {
-                    SourceId = s.SourceId,
-                    SourceType = s.SourceType,
-                    TenantId = s.TenantId,
-                    TrustLevel = s.TrustLevel,
-                    Uri = s.Uri,
-                    Metadata = s.Metadata ?? new()
-                }).ToList() ?? new(),
-            RequestedTools = request.RequestedTools?
-                .Select(t => new ToolCallDescriptor
-                {
-                    ToolName = t.ToolName,
-                    Parameters = t.Parameters?
-                        .ToDictionary(kvp => kvp.Key, kvp => (object)kvp.Value)
-                        ?? new()
-                }).ToList() ?? new(),
+            DataSources = ToSourceDescriptors(request.DataSources),
+            RequestedTools = ToToolCallDescriptors(request.RequestedTools),
             OutputSchemaJson = request.OutputSchemaJson,
             Metadata = request.Metadata ?? new()
         };
@@ -223,4 +279,26 @@ public sealed class GuardrailController : ControllerBase
             Environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "production"
         };
     }
+
+    private static List<SourceDescriptor> ToSourceDescriptors(List<SourceDescriptorApiModel>? dataSources)
+        => dataSources?
+            .Select(s => new SourceDescriptor
+            {
+                SourceId = s.SourceId,
+                SourceType = s.SourceType,
+                TenantId = s.TenantId,
+                TrustLevel = s.TrustLevel,
+                Uri = s.Uri,
+                Metadata = s.Metadata ?? new()
+            }).ToList() ?? new();
+
+    private static List<ToolCallDescriptor> ToToolCallDescriptors(List<ToolCallApiModel>? requestedTools)
+        => requestedTools?
+            .Select(t => new ToolCallDescriptor
+            {
+                ToolName = t.ToolName,
+                Parameters = t.Parameters?
+                    .ToDictionary(kvp => kvp.Key, kvp => (object)kvp.Value)
+                    ?? new()
+            }).ToList() ?? new();
 }

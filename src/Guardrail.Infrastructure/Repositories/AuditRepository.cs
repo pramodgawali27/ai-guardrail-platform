@@ -58,11 +58,24 @@ public sealed class AuditRepository : IAuditRepository
         var page = Math.Max(criteria.Page, 1);
         var pageSize = Math.Clamp(criteria.PageSize, 1, 200);
 
-        var items = await query
-            .OrderByDescending(x => x.CreatedAt)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync(ct);
+        IReadOnlyList<AuditEvent> items;
+        if (_dbContext.Database.ProviderName?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            var allItems = await query.ToListAsync(ct);
+            items = allItems
+                .OrderByDescending(x => x.CreatedAt)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToList();
+        }
+        else
+        {
+            items = await query
+                .OrderByDescending(x => x.CreatedAt)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(ct);
+        }
 
         return (items, total);
     }

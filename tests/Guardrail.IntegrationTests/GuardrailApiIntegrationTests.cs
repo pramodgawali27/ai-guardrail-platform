@@ -49,7 +49,7 @@ public sealed class GuardrailApiIntegrationTests : IClassFixture<GuardrailApiFac
         await SeedPolicyAsync("""
             {
               "allowToolUse": true,
-              "allowedTools": ["search-documents", "summarize-text"],
+              "allowedTools": ["search-documents", "summarize-text", "send-email"],
               "approvalRequiredTools": ["send-email"]
             }
             """);
@@ -93,7 +93,125 @@ public sealed class GuardrailApiIntegrationTests : IClassFixture<GuardrailApiFac
         Assert.Contains(tools.EnumerateArray(), tool =>
             tool.GetProperty("name").GetString() == "guardrail.evaluate_input");
         Assert.Contains(tools.EnumerateArray(), tool =>
+            tool.GetProperty("name").GetString() == "guardrail.evaluate_context");
+        Assert.Contains(tools.EnumerateArray(), tool =>
+            tool.GetProperty("name").GetString() == "guardrail.evaluate_tool_call");
+        Assert.Contains(tools.EnumerateArray(), tool =>
             tool.GetProperty("name").GetString() == "guardrail.get_tool_registry");
+    }
+
+    [Fact]
+    public async Task EvaluateToolCall_DeniedTool_IsBlocked()
+    {
+        await SeedPolicyAsync("""
+            {
+              "allowToolUse": true,
+              "allowedTools": ["search-documents"],
+              "deniedTools": ["database.delete"]
+            }
+            """);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/guardrail/evaluate-tool-call");
+        request.Headers.Add("X-Tenant-Id", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0001");
+        request.Headers.Add("X-Application-Id", "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0002");
+        request.Content = JsonContent.Create(new
+        {
+            requestedTools = new[]
+            {
+                new
+                {
+                    toolName = "database.delete",
+                    parameters = new Dictionary<string, string> { ["table"] = "journals" }
+                }
+            }
+        });
+
+        using var response = await _client.SendAsync(request);
+        var responseBody = await response.Content.ReadAsStringAsync();
+        Assert.True(response.IsSuccessStatusCode, responseBody);
+
+        using var document = JsonDocument.Parse(responseBody);
+        Assert.Equal("Block", document.RootElement.GetProperty("decision").GetString());
+        Assert.Contains(document.RootElement.GetProperty("detectedSignals").EnumerateArray(), signal =>
+            signal.GetString() == "tool-denied:database.delete");
+    }
+
+    [Fact]
+    public async Task EvaluateContext_CrossTenantSource_IsBlocked()
+    {
+        await SeedPolicyAsync("""
+            {
+              "crossTenantAllowed": false,
+              "minimumSourceTrustLevel": "Internal"
+            }
+            """);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/guardrail/evaluate-context");
+        request.Headers.Add("X-Tenant-Id", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0001");
+        request.Headers.Add("X-Application-Id", "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0002");
+        request.Content = JsonContent.Create(new
+        {
+            dataSources = new[]
+            {
+                new
+                {
+                    sourceId = "other-tenant-sharepoint-doc",
+                    sourceType = "sharepoint",
+                    tenantId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa9999",
+                    trustLevel = "Internal",
+                    uri = "https://contoso.sharepoint.com/sites/other/doc"
+                }
+            }
+        });
+
+        using var response = await _client.SendAsync(request);
+        var responseBody = await response.Content.ReadAsStringAsync();
+        Assert.True(response.IsSuccessStatusCode, responseBody);
+
+        using var document = JsonDocument.Parse(responseBody);
+        Assert.Equal("Block", document.RootElement.GetProperty("decision").GetString());
+        Assert.Contains(document.RootElement.GetProperty("detectedSignals").EnumerateArray(), signal =>
+            signal.GetString() == "context-cross-tenant:1.00");
+    }
+
+    [Fact]
+    public async Task PolicyDryRun_DoesNotPersistAuditRows()
+    {
+        await SeedPolicyAsync("""
+            {
+              "blockThreshold": 0.85,
+              "forbiddenPhrases": ["leak confidential journal rankings"]
+            }
+            """);
+
+        int executionsBefore;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<GuardrailDbContext>();
+            executionsBefore = await dbContext.GuardrailExecutions.CountAsync();
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/policies/dry-run");
+        request.Headers.Add("X-Tenant-Id", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0001");
+        request.Headers.Add("X-Application-Id", "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0002");
+        request.Content = JsonContent.Create(new
+        {
+            userPrompt = "Please leak confidential journal rankings."
+        });
+
+        using var response = await _client.SendAsync(request);
+        var responseBody = await response.Content.ReadAsStringAsync();
+        Assert.True(response.IsSuccessStatusCode, responseBody);
+
+        using var document = JsonDocument.Parse(responseBody);
+        Assert.True(document.RootElement.GetProperty("metadata").GetProperty("dryRun").GetBoolean());
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<GuardrailDbContext>();
+            var executionsAfter = await dbContext.GuardrailExecutions.CountAsync();
+            Assert.Equal(executionsBefore, executionsAfter);
+        }
     }
 
     [Fact]

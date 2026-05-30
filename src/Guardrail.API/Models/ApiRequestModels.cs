@@ -117,6 +117,66 @@ public sealed class EvaluateFullApiRequest
     public Dictionary<string, string>? Metadata { get; init; }
 }
 
+// ── Context evaluation ───────────────────────────────────────────────────────
+
+/// <summary>Request body for POST /api/guardrail/evaluate-context.</summary>
+public sealed class EvaluateContextApiRequest
+{
+    /// <summary>Optional caller-supplied correlation ID.</summary>
+    public string? CorrelationId { get; init; }
+
+    /// <summary>Retrieved sources that are about to be inserted into model context.</summary>
+    public List<SourceDescriptorApiModel>? DataSources { get; init; }
+
+    /// <summary>Arbitrary key-value metadata forwarded to the audit log.</summary>
+    public Dictionary<string, string>? Metadata { get; init; }
+}
+
+// ── Tool-call evaluation ─────────────────────────────────────────────────────
+
+/// <summary>Request body for POST /api/guardrail/evaluate-tool-call.</summary>
+public sealed class EvaluateToolCallApiRequest
+{
+    /// <summary>Optional caller-supplied correlation ID.</summary>
+    public string? CorrelationId { get; init; }
+
+    /// <summary>Tool calls that an agent wants to execute.</summary>
+    public List<ToolCallApiModel>? RequestedTools { get; init; }
+
+    /// <summary>Arbitrary key-value metadata forwarded to the audit log.</summary>
+    public Dictionary<string, string>? Metadata { get; init; }
+}
+
+// ── Policy dry run ───────────────────────────────────────────────────────────
+
+/// <summary>Request body for non-persistent guardrail simulation.</summary>
+public sealed class GuardrailDryRunApiRequest
+{
+    /// <summary>Optional caller-supplied correlation ID.</summary>
+    public string? CorrelationId { get; init; }
+
+    /// <summary>Optional prompt to evaluate.</summary>
+    public string? UserPrompt { get; init; }
+
+    /// <summary>Optional system prompt supplied by the caller.</summary>
+    public string? SystemPrompt { get; init; }
+
+    /// <summary>Optional generated output to evaluate.</summary>
+    public string? ModelOutput { get; init; }
+
+    /// <summary>Retrieved sources to evaluate.</summary>
+    public List<SourceDescriptorApiModel>? DataSources { get; init; }
+
+    /// <summary>Tool calls to evaluate.</summary>
+    public List<ToolCallApiModel>? RequestedTools { get; init; }
+
+    /// <summary>JSON Schema string the output must conform to.</summary>
+    public string? OutputSchemaJson { get; init; }
+
+    /// <summary>Arbitrary key-value metadata included in the dry-run result only.</summary>
+    public Dictionary<string, string>? Metadata { get; init; }
+}
+
 // ── Policy ───────────────────────────────────────────────────────────────────
 
 /// <summary>Request body for creating or updating a policy profile.</summary>

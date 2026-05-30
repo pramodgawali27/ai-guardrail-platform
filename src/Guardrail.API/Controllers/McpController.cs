@@ -165,9 +165,11 @@ public sealed class McpController : ControllerBase
         var toolName = nameElement.GetString() ?? string.Empty;
         var argumentsElement = paramsElement.TryGetProperty("arguments", out var argsElement) ? argsElement : default;
 
-        return toolName switch
+            return toolName switch
         {
             "guardrail.evaluate_input" => await ExecuteEvaluateInputAsync(argumentsElement, cancellationToken),
+            "guardrail.evaluate_context" => await ExecuteEvaluateContextAsync(argumentsElement, cancellationToken),
+            "guardrail.evaluate_tool_call" => await ExecuteEvaluateToolCallAsync(argumentsElement, cancellationToken),
             "guardrail.evaluate_output" => await ExecuteEvaluateOutputAsync(argumentsElement, cancellationToken),
             "guardrail.evaluate_full" => await ExecuteEvaluateFullAsync(argumentsElement, cancellationToken),
             "guardrail.get_tool_registry" => await ExecuteGetToolRegistryAsync(argumentsElement, cancellationToken),
@@ -193,6 +195,44 @@ public sealed class McpController : ControllerBase
                 Uri = source.Uri,
                 Metadata = source.Metadata ?? new()
             }).ToList() ?? new(),
+            RequestedTools = args.RequestedTools?.Select(tool => new ToolCallDescriptor
+            {
+                ToolName = tool.ToolName,
+                Parameters = tool.Parameters?.ToDictionary(kvp => kvp.Key, kvp => (object)kvp.Value) ?? new()
+            }).ToList() ?? new(),
+            Metadata = args.Metadata ?? new()
+        }, cancellationToken);
+
+        return BuildToolSuccess(result);
+    }
+
+    private async Task<object> ExecuteEvaluateContextAsync(JsonElement argumentsElement, CancellationToken cancellationToken)
+    {
+        var args = DeserializeArguments<McpEvaluateContextArguments>(argumentsElement);
+        var result = await _orchestrator.EvaluateContextAsync(new ContextEvaluationRequest
+        {
+            TenantContext = BuildTenantContext(args.Tenant),
+            DataSources = args.DataSources?.Select(source => new SourceDescriptor
+            {
+                SourceId = source.SourceId,
+                SourceType = source.SourceType,
+                TenantId = source.TenantId,
+                TrustLevel = source.TrustLevel,
+                Uri = source.Uri,
+                Metadata = source.Metadata ?? new()
+            }).ToList() ?? new(),
+            Metadata = args.Metadata ?? new()
+        }, cancellationToken);
+
+        return BuildToolSuccess(result);
+    }
+
+    private async Task<object> ExecuteEvaluateToolCallAsync(JsonElement argumentsElement, CancellationToken cancellationToken)
+    {
+        var args = DeserializeArguments<McpEvaluateToolCallArguments>(argumentsElement);
+        var result = await _orchestrator.EvaluateToolCallAsync(new ToolCallEvaluationRequest
+        {
+            TenantContext = BuildTenantContext(args.Tenant),
             RequestedTools = args.RequestedTools?.Select(tool => new ToolCallDescriptor
             {
                 ToolName = tool.ToolName,
@@ -396,6 +436,60 @@ public sealed class McpController : ControllerBase
 
         yield return new
         {
+            name = "guardrail.evaluate_context",
+            title = "Evaluate Retrieved Context",
+            description = "Validate source trust, tenant boundaries, and data-source policy before retrieved context is sent to a model.",
+            inputSchema = new
+            {
+                type = "object",
+                additionalProperties = false,
+                required = new[] { "tenant", "dataSources" },
+                properties = new
+                {
+                    tenant = BuildTenantSchema(),
+                    dataSources = new
+                    {
+                        type = "array",
+                        items = BuildSourceDescriptorSchema()
+                    },
+                    metadata = new
+                    {
+                        type = "object",
+                        additionalProperties = new { type = "string" }
+                    }
+                }
+            }
+        };
+
+        yield return new
+        {
+            name = "guardrail.evaluate_tool_call",
+            title = "Evaluate Tool Call",
+            description = "Validate proposed MCP/tool actions before execution, including deny lists and human-approval gates.",
+            inputSchema = new
+            {
+                type = "object",
+                additionalProperties = false,
+                required = new[] { "tenant", "requestedTools" },
+                properties = new
+                {
+                    tenant = BuildTenantSchema(),
+                    requestedTools = new
+                    {
+                        type = "array",
+                        items = BuildToolCallSchema()
+                    },
+                    metadata = new
+                    {
+                        type = "object",
+                        additionalProperties = new { type = "string" }
+                    }
+                }
+            }
+        };
+
+        yield return new
+        {
             name = "guardrail.evaluate_output",
             title = "Evaluate Model Output",
             description = "Run the output guardrail pipeline against generated model text before returning it to a user.",
@@ -576,6 +670,8 @@ public sealed class McpController : ControllerBase
                 rest = new
                 {
                     evaluateInput = $"{baseUri}/api/guardrail/evaluate-input",
+                    evaluateContext = $"{baseUri}/api/guardrail/evaluate-context",
+                    evaluateToolCall = $"{baseUri}/api/guardrail/evaluate-tool-call",
                     evaluateOutput = $"{baseUri}/api/guardrail/evaluate-output",
                     evaluateFull = $"{baseUri}/api/guardrail/evaluate-full",
                     toolRegistry = $"{baseUri}/api/tools/registry",
@@ -588,6 +684,8 @@ public sealed class McpController : ControllerBase
                     tools = new[]
                     {
                         "guardrail.evaluate_input",
+                        "guardrail.evaluate_context",
+                        "guardrail.evaluate_tool_call",
                         "guardrail.evaluate_output",
                         "guardrail.evaluate_full",
                         "guardrail.get_tool_registry",
@@ -631,6 +729,20 @@ public sealed class McpEvaluateOutputArguments
     public Guid? InputExecutionId { get; init; }
     public string ModelOutput { get; init; } = string.Empty;
     public string? OutputSchemaJson { get; init; }
+    public Dictionary<string, string>? Metadata { get; init; }
+}
+
+public sealed class McpEvaluateContextArguments
+{
+    public McpTenantContext Tenant { get; init; } = new();
+    public List<SourceDescriptorApiModel>? DataSources { get; init; }
+    public Dictionary<string, string>? Metadata { get; init; }
+}
+
+public sealed class McpEvaluateToolCallArguments
+{
+    public McpTenantContext Tenant { get; init; } = new();
+    public List<ToolCallApiModel>? RequestedTools { get; init; }
     public Dictionary<string, string>? Metadata { get; init; }
 }
 

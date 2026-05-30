@@ -59,6 +59,7 @@ public class InputEvaluationRequest
     public List<SourceDescriptor> DataSources { get; set; } = new();
     public List<ToolCallDescriptor> RequestedTools { get; set; } = new();
     public Dictionary<string, string> Metadata { get; set; } = new();
+    public bool PersistAudit { get; set; } = true;
 }
 
 /// <summary>Request payload for evaluating AI model output before returning it to the caller.</summary>
@@ -70,6 +71,7 @@ public class OutputEvaluationRequest
     public string? OutputSchemaJson { get; set; }
     public ConstraintSet AppliedConstraints { get; set; } = ConstraintSet.Default;
     public Dictionary<string, string> Metadata { get; set; } = new();
+    public bool PersistAudit { get; set; } = true;
 }
 
 /// <summary>Request payload for evaluating both model input and output in a single atomic call.</summary>
@@ -83,4 +85,23 @@ public class FullEvaluationRequest
     public List<ToolCallDescriptor> RequestedTools { get; set; } = new();
     public string? OutputSchemaJson { get; set; }
     public Dictionary<string, string> Metadata { get; set; } = new();
+    public bool PersistAudit { get; set; } = true;
+}
+
+/// <summary>Request payload for evaluating retrieved context before it is sent to a model.</summary>
+public class ContextEvaluationRequest
+{
+    public TenantContext TenantContext { get; set; } = null!;
+    public List<SourceDescriptor> DataSources { get; set; } = new();
+    public Dictionary<string, string> Metadata { get; set; } = new();
+    public bool PersistAudit { get; set; } = true;
+}
+
+/// <summary>Request payload for evaluating a proposed tool call before execution.</summary>
+public class ToolCallEvaluationRequest
+{
+    public TenantContext TenantContext { get; set; } = null!;
+    public List<ToolCallDescriptor> RequestedTools { get; set; } = new();
+    public Dictionary<string, string> Metadata { get; set; } = new();
+    public bool PersistAudit { get; set; } = true;
 }

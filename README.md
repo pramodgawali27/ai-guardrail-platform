@@ -145,6 +145,10 @@ Every decision is logged. Borderline cases are flagged for human review with a f
 
 **Tech stack:** .NET 9 · ASP.NET Core · MediatR · FluentValidation · EF Core · SQLite/PostgreSQL · Serilog · OpenTelemetry · Docker
 
+For the enterprise product blueprint, admin control-plane design, security coverage, self-improvement loop, and deployment roadmap, see [`docs/product-architecture-strategy.md`](docs/product-architecture-strategy.md).
+
+For cloud deployment, VS Code/GitHub Copilot MCP setup, database/Atlassian/Microsoft 365 MCP proxy patterns, and internal app integration examples, see [`docs/integration-deployment-guide.md`](docs/integration-deployment-guide.md).
+
 ---
 
 ## Quick Start
@@ -229,6 +233,8 @@ This repository now exposes three integration surfaces:
 ### MCP tools exposed by `/mcp`
 
 - `guardrail.evaluate_input`
+- `guardrail.evaluate_context`
+- `guardrail.evaluate_tool_call`
 - `guardrail.evaluate_output`
 - `guardrail.evaluate_full`
 - `guardrail.get_tool_registry`

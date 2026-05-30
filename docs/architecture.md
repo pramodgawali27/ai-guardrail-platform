@@ -10,6 +10,8 @@ The Enterprise AI Guardrail Platform is a **.NET 9 multi-tenant guardrail gatewa
 
 At its core, the platform evaluates prompts, model outputs, tool requests, and context sources against tenant/application policy before traffic reaches end users or downstream actions.
 
+For the broader sellable product architecture, admin experience, connector strategy, self-improving threat loop, and deployment roadmap, see [Product Architecture Strategy](product-architecture-strategy.md).
+
 ```
 Client / Agent / App
         |
@@ -52,6 +54,8 @@ app/                        Legacy Python prototype retained for reference
 ### 1. REST Guardrail API
 
 - `POST /api/guardrail/evaluate-input`
+- `POST /api/guardrail/evaluate-context`
+- `POST /api/guardrail/evaluate-tool-call`
 - `POST /api/guardrail/evaluate-output`
 - `POST /api/guardrail/evaluate-full`
 - `POST /api/tools/validate`
@@ -67,6 +71,8 @@ Use this path when your application already controls its own model invocation an
 The MCP surface exposes these server tools:
 
 - `guardrail.evaluate_input`
+- `guardrail.evaluate_context`
+- `guardrail.evaluate_tool_call`
 - `guardrail.evaluate_output`
 - `guardrail.evaluate_full`
 - `guardrail.get_tool_registry`

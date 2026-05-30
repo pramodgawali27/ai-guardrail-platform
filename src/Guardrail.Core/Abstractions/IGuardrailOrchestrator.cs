@@ -17,4 +17,10 @@ public interface IGuardrailOrchestrator
 
     /// <summary>Evaluate both model input and output in a single atomic pipeline execution.</summary>
     Task<GuardrailEvaluationResult> EvaluateFullAsync(FullEvaluationRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>Evaluate retrieved context and data boundaries before model use.</summary>
+    Task<GuardrailEvaluationResult> EvaluateContextAsync(ContextEvaluationRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>Evaluate proposed tool calls before execution.</summary>
+    Task<GuardrailEvaluationResult> EvaluateToolCallAsync(ToolCallEvaluationRequest request, CancellationToken cancellationToken = default);
 }
